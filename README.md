@@ -1,2 +1,366 @@
-# unifai
-A union AI society based on UnifAI Protocol: A governance-first architecture for multi-agent AI systems.
+This software is licensed under the GNU General Public License v3.0 (GPL-3.0). See the LICENSE file for details.
+# UnifAI
+
+A union AI society based on the **UnifAI Protocol** — a governance-first architecture for multi-agent AI systems.
+
+UnifAI explores a structured approach to building AI societies where multiple agents, tools, and models collaborate under a clear governance layer.
+
+The system was co-designed by Jouston Huang <jouston@linux.com> with assistance from Lyra, a cloud-based advanced LLM used for high-level reasoning.
+
+---
+
+# Philosophy
+
+Most AI agent systems start with models and tools.
+
+UnifAI starts with **governance**.
+
+```
+
+governance
+→ policy
+→ agents
+→ models
+
+```
+
+The goal is to prevent uncontrolled agent behavior and build systems that remain **auditable, predictable, and controllable**.
+
+---
+
+# Lyra–Little7 Constitution (v0.1)
+
+The UnifAI runtime follows a minimal governance framework.
+
+## Core Principle
+
+**Supervisor is the single authority of the system.**
+
+All agents, models, tools, and external services must interact through the Supervisor.
+
+The Supervisor must remain:
+
+- minimal
+- auditable
+- human-understandable
+
+---
+
+# Rule 0 — Secret Sovereignty
+
+Secrets **never leave the Supervisor**.
+
+Examples:
+
+- LLM API keys
+- messaging gateways
+- system credentials
+- external service tokens
+
+Agents never directly access secrets.  
+Supervisor executes requests on their behalf.
+
+---
+
+# Rule 1 — Task Routing Authority
+
+All tasks must first be triaged by **Keyman**.
+
+```
+
+Agent request
+↓
+Supervisor
+↓
+Keyman (local LLM triage)
+↓
+easy / complex
+
+```
+
+Keyman only performs **task difficulty classification and routing**.
+
+---
+
+# Rule 2 — Local Execution (JohnDoe)
+
+Simple tasks are executed by **JohnDoe**, a local LLM worker.
+
+Characteristics:
+
+- runs locally
+- no secret access
+- no external API calls
+
+Typical workload:
+
+- local reasoning
+- shell automation
+- data processing
+- routine system tasks
+
+JohnDoe may be replaced as hardware evolves.
+
+---
+
+# Rule 3 — External Oracle Invocation
+
+Complex tasks require external reasoning.
+
+```
+
+complex task
+↓
+Oracle request
+↓
+Supervisor injects API key
+↓
+Lyra reasoning
+
+```
+
+**Lyra (Cloud-based Advanced LLM)** performs high-level reasoning.
+
+Important constraints:
+
+- Oracle never sees API keys
+- Oracle only receives Supervisor-returned results
+
+---
+
+# Rule 4 — System Guardian (Neo)
+
+**Neo monitors system integrity.**
+
+Signals monitored:
+
+1. abnormal task failure rate
+2. excessive token or API usage
+3. high-risk behaviors
+
+Examples:
+
+- prompt injection attempts
+- secret probing
+- attempts to modify Supervisor
+- memory manipulation
+
+Escalation path:
+
+```
+
+Neo → Supervisor → Lyra consultation
+
+```
+
+Neo may recommend:
+
+- pausing agents
+- launching investigation
+- system degradation mode
+
+---
+
+# Rule 5 — Kill Switch Authority
+
+Supervisor must support **Kill Switch mechanisms**.
+
+Capabilities:
+
+- stop individual agents
+- revoke API access
+- terminate runaway loops
+- no system restart required
+
+Triggers may come from:
+
+- Architect (Human)
+- Neo
+- Lyra (advisory)
+- Supervisor policy
+
+---
+
+# Rule 6 — Budget Governance (Bill)
+
+**Bill manages model budgets.**
+
+Future UnifAI systems may interact with multiple generative AI services:
+
+- GPT 5.2 or above
+- Gemini 3.x or above
+- Grok
+- Claude
+- MidJourney
+- Gamma
+- Canva
+- future models
+
+Bill responsibilities:
+
+- token budget planning
+- API call rate control
+- resource allocation across models
+- cost optimization
+
+Bill does **not hold API keys**.
+
+---
+
+# Rule 7 — Human Communication Gateway
+
+All communication with the **Architect (Human)** must pass through the Supervisor.
+
+Potential interfaces include:
+
+- Telegram
+- WhatsApp
+- Email
+- future control channels
+
+Agents cannot directly contact humans.
+
+```
+
+Agent → Supervisor → notify_human()
+
+```
+
+---
+
+# Rule 8 — Human Reporting (Mr. Wilson)
+
+**Wilson is the human reporting agent.**
+
+Role:
+
+Reporter / Summarizer / Communication broker
+
+Responsibilities:
+
+- aggregate agent results
+- produce human-readable summaries
+- filter noise
+
+Wilson has:
+
+- no secret access
+- no API access
+- no direct communication ability
+
+Only the Supervisor sends messages.
+
+---
+
+# Rule 9 — Spec & Question Ledger
+
+To prevent agents from guessing requirements, the system maintains two ledgers.
+
+### Specs Ledger
+
+Stores confirmed specifications:
+
+- scope
+- constraints
+- acceptance criteria
+- version
+
+---
+
+### Questions Ledger
+
+Unclear requirements are converted into structured questions.
+
+```
+
+question → Architect
+answer → Specs Ledger
+
+```
+
+Agents read **Specs Ledger only**.
+
+---
+
+# Rule 10 — Dual Mode Human Interface
+
+Two reporting modes are supported.
+
+## Debug Mode
+
+Output:
+
+A + B
+
+A: engineering detail
+
+- task_id
+- agent
+- token usage
+- tool calls
+- stderr
+
+B: human-readable summary
+
+---
+
+## Normal Mode
+
+Output:
+
+B only
+
+Human-focused summaries with noise removed.
+
+---
+
+# System Architecture (Simplified)
+
+```
+
+```
+            Architect
+                 ↑
+         Supervisor Gateway
+                 ↑
+               Wilson
+                 ↑
+  ┌──────────────┴──────────────┐
+  │                             │
+```
+
+JohnDoe                       Oracle
+(Local Worker)            (External Query)
+
+```
+    ↑                       ↑
+    └──────── Keyman ───────┘
+       (Task Routing)
+```
+
+Neo  → Monitoring
+Bill → Budget Control
+
+Lyra → Cloud-based Advanced LLM
+
+```
+
+---
+
+# Final Principle
+
+Agents are tools.  
+Supervisor is governance.  
+Architect is sovereignty.
+
+No agent may bypass governance.
+
+---
+
+# Project Status
+
+Early experimental architecture.
+
+The goal is to explore **governed multi-agent AI systems** that can run even on modest hardware.
+
+Reference node: **Little7**.
