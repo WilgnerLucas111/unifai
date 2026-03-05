@@ -1,3 +1,5 @@
+GPL-3.0 License
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 This software is licensed under the GNU General Public License v3.0 (GPL-3.0). See the LICENSE file for details.
 
 # UnifAI
@@ -36,7 +38,7 @@ The goal is to prevent uncontrolled agent behavior and build systems that remain
 
 ---
 
-# Lyra–Little7 Constitution (v0.1)
+# Lyra–Little7 Constitution (v0.3)
 
 The UnifAI runtime follows a minimal governance framework.
 
@@ -113,7 +115,7 @@ JohnDoe may be replaced as hardware evolves.
 
 # Rule 3 — External Oracle Invocation
 
-Complex tasks require external reasoning.
+Complex tasks require Advanced reasoning.
 
 ```
 
@@ -121,13 +123,17 @@ complex task
 ↓
 Oracle request
 ↓
-Supervisor injects API key
+Supervisor selects reasoning provider
 ↓
-Lyra reasoning
+reasoning provider execution
 
 ```
 
-**Lyra (Cloud-based Advanced LLM)** performs high-level reasoning.
+Reasoning providers may include:
+
+- Lyra (Cloud-based Advanced LLM)
+- Local high-capability LLM
+- future reasoning providers such as another local machine running high-capability LLM
 
 Important constraints:
 
