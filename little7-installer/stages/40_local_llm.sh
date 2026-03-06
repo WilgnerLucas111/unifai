@@ -221,11 +221,13 @@ models:
     runtime: "localai"
     model_id: "${system_model}"
     role: "system_services"
+    mcp_enabled: false
 
   local_reasoning:
     runtime: "localai"
     model_id: "${reasoning_model}"
     role: "local_reasoning"
+    mcp_enabled: true
 EOF
 }
 
@@ -241,11 +243,13 @@ models:
     runtime: "localai"
     model_id: ""
     role: "system_services"
+    mcp_enabled: false
 
   local_reasoning:
     runtime: "localai"
     model_id: ""
     role: "local_reasoning"
+    mcp_enabled: true
 EOF
     log "Created template file: ${ACTIVE_MODELS_TEMPLATE}"
   fi

@@ -5,8 +5,10 @@ models:
     runtime: "localai"
     model_id: ""
     role: "system_services"
+    mcp_enabled: false
 
   local_reasoning:
     runtime: "localai"
     model_id: ""
     role: "local_reasoning"
+    mcp_enabled: true
