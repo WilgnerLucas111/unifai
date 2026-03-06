@@ -371,6 +371,15 @@ No agent may bypass governance.
 
 ---
 
+# Validation
+
+Run the Gaia smoke test:
+
+```bash
+./scripts/smoke_test_gaia.sh
+
+---
+
 # Project Status
 
 Early experimental architecture.
