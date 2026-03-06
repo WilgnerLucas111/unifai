@@ -40,7 +40,7 @@ DATA_DIR = SUPERVISOR_DIR / "data"
 LOG_DIR = SUPERVISOR_DIR / "logs"
 DB_PATH = DATA_DIR / "supervisor.db"
 LOG_PATH = LOG_DIR / "supervisor.log"
-WORLD_CHARTER_PATH = ROOT / "little7-installer" / "config" / "world_charter_v0_1.yaml"
+WORLD_CHARTER_PATH = ROOT / "little7-installer" / "config" / "world_charter_v0_1.yml"
 WORKER_DUMMY_PATH = ROOT / "little7-installer" / "docker" / "worker_dummy.py"
 
 

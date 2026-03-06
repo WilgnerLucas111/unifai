@@ -16,6 +16,7 @@ sudo apt-get update -y
 # - net-tools/iproute2/iw: network debug & watchdog support
 # - systemd-timesyncd: stable clock (TLS + logs)
 sudo apt-get install -y \
+  whiptail \
   ca-certificates \
   curl \
   gnupg \

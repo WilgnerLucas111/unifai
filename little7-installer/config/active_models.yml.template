@@ -1,0 +1,12 @@
+version: "0.1"
+
+models:
+  system_services:
+    runtime: "localai"
+    model_id: ""
+    role: "system_services"
+
+  local_reasoning:
+    runtime: "localai"
+    model_id: ""
+    role: "local_reasoning"

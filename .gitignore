@@ -28,6 +28,7 @@ db/
 data/
 lyra-supervisor/logs/
 lyra-supervisor/data/
+little7-installer/config/active_models.yml
 *.sqlite
 *.sqlite3
 
