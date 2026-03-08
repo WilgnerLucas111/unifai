@@ -9,14 +9,14 @@ All automated coding agents (including Codex) must follow the system charter.
 Agents must read the following files before making architectural changes:
 
 1. AGENTS.md
-2. little7-installer/config/world_charter_v0_1.yml
+2. little7-installer/config/world_charter.yaml
 3. README.md
 
 ## Authoritative Documents
 
 The following documents define the governing rules of the system:
 
-- little7-installer/config/world_charter_v0_1.yml
+- little7-installer/config/world_charter.yaml
 
 These files are **normative** and must be treated as the source of truth for:
 
