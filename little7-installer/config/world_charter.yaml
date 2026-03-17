@@ -222,6 +222,7 @@ agents:
         - "Must not alter world laws"
 
     - id: "lyra"
+      layer: "docker_world"
       type: "resident_agent"
       class: "reasoning_engine"
       description: "High-order reasoning support for complex or ambiguous work."
