@@ -21,7 +21,7 @@ The system was co-designed by Jouston Huang <jouston@linux.com> with assistance 
 
 Most AI systems start with models and tools.
 
-UnifAI starts with **authority structure**.
+UnifAI starts with **governance**.
 
 The project aims to build a governed AI operating system in which agents operate under world physics and constitutional constraints ratified by the human Architect.
 
@@ -387,3 +387,5 @@ The goal is to explore **governed multi-agent AI systems** that can run even on 
 Reference node: **Little7**.
 ode: **Little7**.
 ttle7**.
+ttle7**.
+*.
