@@ -4,7 +4,7 @@ This software is licensed under the GNU General Public License v3.0 (GPL-3.0). S
 
 # UnifAI
 
-**A governed AI operating system with explicit authority boundaries.**
+**A governed agentic AI operating system.**
 
 **Run your own AI society -- locally.**
 
@@ -385,3 +385,5 @@ Early experimental architecture.
 The goal is to explore **governed multi-agent AI systems** that can run even on modest hardware.
 
 Reference node: **Little7**.
+ode: **Little7**.
+ttle7**.
