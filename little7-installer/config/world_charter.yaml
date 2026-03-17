@@ -82,13 +82,15 @@ world_laws:
       - "Budget authority is a world-physics primitive."
       - "Budget control must not be delegated to ad hoc agent behavior."
   secret_safe_policy:
-    managed_by: "Supervisor"
+    managed_by: "Secret Safe"
+    enforced_by: "Supervisor"
     layer: "world_physics"
     notes:
       - "Secrets remain in world physics boundaries and never become direct agent-owned data."
       - "Secret handling must not be embedded in ad hoc agent behavior."
   fuse_kill_switch_policy:
-    managed_by: "Supervisor"
+    managed_by: "Fuse/Kill Switch"
+    enforced_by: "Supervisor"
     layer: "world_physics"
     triggers:
       - "Architect"
@@ -152,9 +154,9 @@ system_components:
       - "Must only enforce active world laws"
 
 agents:
-  layer: "docker_world"
   resident:
     - id: "wilson"
+      layer: "docker_world"
       type: "resident_agent"
       class: "mandate_interpreter"
       description: "High-risk agent responsible for interpreting Architect intent and supervising contractual completion."
@@ -187,6 +189,7 @@ agents:
           - "Delayed or missing reclamation"
 
     - id: "keyman"
+      layer: "docker_world"
       type: "resident_agent"
       class: "dispatcher"
       description: "Execution dispatcher with intentionally narrow authority."
@@ -206,6 +209,7 @@ agents:
         - "Must stop acting after dispatch is complete"
 
     - id: "oracle"
+      layer: "docker_world"
       type: "resident_agent"
       class: "knowledge_engine"
       description: "Persistent knowledge and task-processing agent."
