@@ -44,16 +44,13 @@ little7-installer/config/active_models.yml
 *.env
 .env.*
 
-# Repo secretvault structure
-/lyra-supervisor/supervisor-secretvault/*
-!/lyra-supervisor/supervisor-secretvault/README.md
-!/lyra-supervisor/supervisor-secretvault/install.sh
-!/lyra-supervisor/supervisor-secretvault/uninstall.sh
-!/lyra-supervisor/supervisor-secretvault/secrets/
-!/lyra-supervisor/supervisor-secretvault/grants/
-!/lyra-supervisor/supervisor-secretvault/audit/
-!/lyra-supervisor/supervisor-secretvault/config/
-!/lyra-supervisor/supervisor-secretvault/tmp/
+# SecretVault: never commit secrets or runtime artifacts
+/lyra-supervisor/supervisor-secretvault/secrets/*
+/lyra-supervisor/supervisor-secretvault/grants/*
+/lyra-supervisor/supervisor-secretvault/audit/*
+/lyra-supervisor/supervisor-secretvault/tmp/*
+
+# allow directory structure
 !/lyra-supervisor/supervisor-secretvault/secrets/.gitkeep
 !/lyra-supervisor/supervisor-secretvault/grants/.gitkeep
 !/lyra-supervisor/supervisor-secretvault/audit/.gitkeep
