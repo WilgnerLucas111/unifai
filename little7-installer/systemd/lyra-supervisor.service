@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/little7/lyra-supervisor
-ExecStart=/usr/bin/python3 /opt/little7/lyra-supervisor/supervisor.py
+WorkingDirectory=/opt/little7/supervisor
+ExecStart=/usr/bin/python3 /opt/little7/supervisor/supervisor.py
 
 StandardOutput=journal
 StandardError=journal

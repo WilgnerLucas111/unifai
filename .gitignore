@@ -26,8 +26,8 @@ env/
 logs/
 db/
 data/
-lyra-supervisor/logs/
-lyra-supervisor/data/
+supervisor/logs/
+supervisor/data/
 little7-installer/config/active_models.yml
 *.sqlite
 *.sqlite3
@@ -44,7 +44,7 @@ little7-installer/config/active_models.yml
 *.env
 .env.*
 
-/lyra-supervisor/supervisor-secretvault/*
+/supervisor/supervisor-secretvault/*
 
 # =========================
 # Local testing artifacts

@@ -373,7 +373,7 @@ No agent may bypass governance.
 Run the Gaia smoke test:
 
 ```bash
-./lyra-scripts/smoke_test_gaia.sh
+./scripts/smoke_test_gaia.sh
 ```
 
 ---

@@ -7,15 +7,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # installer dir: .../little7-installer
 INSTALLER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# repo root: .../ (contains little7-installer, lyra-supervisor, etc.)
+# repo root: .../ (contains little7-installer, supervisor, etc.)
 REPO_ROOT="$(cd "$INSTALLER_DIR/.." && pwd)"
 
-SRC_SUP="${REPO_ROOT}/lyra-supervisor"
-SRC_CFG="${REPO_ROOT}/lyra-config"
-SRC_SEC="${REPO_ROOT}/lyra-supervisor/supervisor-secretvault/secrets"
+SRC_SUP="${REPO_ROOT}/supervisor"
+SRC_CFG="${REPO_ROOT}/config"
+SRC_SEC="${REPO_ROOT}/supervisor/supervisor-secretvault/secrets"
 
 DST_BASE="/opt/little7"
-DST_SUP="${DST_BASE}/lyra-supervisor"
+DST_SUP="${DST_BASE}/supervisor"
 DST_CFG="/etc/little7"
 DST_SEC="/etc/little7/secrets"
 DST_LOG="/var/log/little7"

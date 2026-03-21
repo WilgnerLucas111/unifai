@@ -35,7 +35,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SUPERVISOR_DIR = ROOT / "lyra-supervisor"
+SUPERVISOR_DIR = ROOT / "supervisor"
 DATA_DIR = SUPERVISOR_DIR / "data"
 LOG_DIR = SUPERVISOR_DIR / "logs"
 DB_PATH = DATA_DIR / "supervisor.db"

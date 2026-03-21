@@ -23,7 +23,7 @@ ok "rsync present"
 [ -d /opt/little7 ] || fail "/opt/little7 missing"
 ok "/opt/little7 exists"
 
-[ -f /opt/little7/lyra-supervisor/supervisor.py ] || fail "supervisor.py missing at /opt/little7/lyra-supervisor/supervisor.py"
+[ -f /opt/little7/supervisor/supervisor.py ] || fail "supervisor.py missing at /opt/little7/supervisor/supervisor.py"
 ok "supervisor.py present"
 
 # --- Service checks ---

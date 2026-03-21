@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB="$HOME/lyra-supervisor/data/supervisor.db"
+DB="$HOME/supervisor/data/supervisor.db"
 SPEC="${1:-}"
 
 if [[ -z "$SPEC" ]]; then

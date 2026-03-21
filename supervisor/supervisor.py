@@ -11,8 +11,8 @@ import os, time, json, sqlite3, subprocess
 from datetime import datetime, timezone, timedelta
 
 BUILD_ID = "dev-20260305-1427"
-DB = os.path.expanduser("~/lyra-supervisor/data/supervisor.db")
-LOG = os.path.expanduser("~/lyra-supervisor/logs/supervisor.log")
+DB = os.path.expanduser("~/supervisor/data/supervisor.db")
+LOG = os.path.expanduser("~/supervisor/logs/supervisor.log")
 
 # Hard limits (safe defaults)
 MAX_LLM_CALLS_PER_TASK = int(os.getenv("LYRA_MAX_LLM_CALLS_PER_TASK", "3"))
