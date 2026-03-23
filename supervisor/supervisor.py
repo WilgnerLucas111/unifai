@@ -9,6 +9,17 @@ Switch remain separate world-physics primitives.
 
 import os, time, json, sqlite3, subprocess
 from datetime import datetime, timezone, timedelta
+import sys
+
+# Importa o Plugin do Neo Guardian
+# Adiciona o diretório atual ao sys.path para garantir que os plugins sejam encontrados
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from plugins.neo_guardian.neo import NeoGuardian
+    neo = NeoGuardian()
+except ImportError:
+    print("Warning: NeoGuardian plugin not found. Running without Guardian.", file=sys.stderr)
+    neo = None
 
 BUILD_ID = "dev-20260305-1427"
 DB = os.path.expanduser("~/supervisor/data/supervisor.db")
@@ -87,6 +98,24 @@ def main():
 
         task_id = row["id"]
         spec = json.loads(row["spec"])
+        
+        # === INÍCIO: INTEGRAÇÃO NEO GUARDIAN (RULE 4) ===
+        if neo:
+            neo_eval = neo.analyze_task_spec(spec)
+            if not neo_eval["is_safe"]:
+                # Neo recomenda que o Supervisor ative o Kill Switch
+                error_msg = f"BLOCKED_BY_NEO: {neo_eval['reason']}"
+                log(f"task {task_id} {error_msg}")
+                # Supervisor marca a tarefa como 'failed' de imediato para abortar
+                conn.execute(
+                    "UPDATE tasks SET status='failed', error=? WHERE id=?",
+                    (error_msg, task_id),
+                )
+                conn.commit()
+                conn.close()
+                continue
+        # === FIM: INTEGRAÇÃO NEO GUARDIAN ===
+        
         conn.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
         conn.commit()
 
