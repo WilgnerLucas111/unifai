@@ -1,5 +1,5 @@
 import pytest
-from experiments.keyman_auth import KeymanGuardian, MockSupervisor
+from keyman_auth import KeymanGuardian, MockSupervisor, MockNeo
 
 @pytest.fixture
 def keyman():
@@ -9,31 +9,32 @@ def keyman():
 def supervisor():
     return MockSupervisor()
 
-def test_keyman_authorizes_valid_request(keyman):
-    result = keyman.evaluate_secret_request("research_agent", "GOOGLE_API_KEY")
+def test_keyman_authorizes_valid_capability(keyman):
+    result = keyman.evaluate_capability_request("research_agent", "web_search")
     assert result["is_authorized"] is True
-    assert result["recommended_action"] == "inject_secret"
+    assert result["mapped_secret"] == "GOOGLE_API_KEY"
+    assert result["recommended_action"] == "issue_grant"
 
-def test_keyman_blocks_invalid_request(keyman):
-    # A research agent should never be able to request the database URL
-    result = keyman.evaluate_secret_request("research_agent", "DATABASE_URL")
+def test_keyman_blocks_invalid_capability(keyman):
+    result = keyman.evaluate_capability_request("research_agent", "database_rw")
     assert result["is_authorized"] is False
     assert result["recommended_action"] == "block_task"
 
-def test_supervisor_injects_on_approval(supervisor):
-    req = {"role": "github_agent", "requested_secret": "GITHUB_TOKEN"}
+def test_supervisor_issues_grant_instead_of_raw_secret(supervisor):
+    req = {"role": "github_agent", "requested_capability": "repo_access"}
     response = supervisor.process_agent_request(req)
     
-    # Assert the supervisor successfully returned the actual secret in memory
+    # Assert returning alias/grant handle instead of the raw API key directly
     assert response["status"] == "success"
-    assert response["injected_memory"] == "ghp_mocked_github_token_abc"
+    assert "grant_id" in response
+    assert "grant_path" in response
+    assert response["ttl_seconds"] == 30
+    assert "ghp_" not in str(response) # Ensure the secret text is NOT leaked in the response
 
-def test_supervisor_blocks_on_denial(supervisor):
-    # Github agent trying to be smart and asking for Google API
-    req = {"role": "github_agent", "requested_secret": "GOOGLE_API_KEY"}
+def test_supervisor_routes_denial_to_neo_quarantine(supervisor):
+    req = {"role": "github_agent", "requested_capability": "database_rw"}
     response = supervisor.process_agent_request(req)
     
-    # Assert the supervisor immediately failed the request
-    assert response["status"] == "failed"
-    assert "error" in response
-    assert response["error"] == "BLOCKED_BY_KEYMAN"
+    # Assert Neo intervened via Signal
+    assert response["status"] == "quarantined"
+    assert "PROBING_DETECTED" in response["error"]
