@@ -23,6 +23,31 @@ DST_LIB="/var/lib/little7"
 
 echo "== Stage 20: Installing Lyra Supervisor =="
 
+# Fetch supervisor-secretvault independently with Lyra's hardened flow
+SV_DIR="${SRC_SUP}/supervisor-secretvault"
+REPO_URL="https://github.com/joustonhuang/supervisor-secretvault.git"
+
+echo "Fetching independent supervisor-secretvault repository..."
+
+check_remote() {
+  local url
+  url="$(git -C "$SV_DIR" remote get-url origin 2>/dev/null || echo '')"
+  [[ "$url" == "$REPO_URL" ]]
+}
+
+if [ -d "${SV_DIR}/.git" ] && check_remote; then
+  echo "Valid repository found. Updating via hardened reset..."
+  pushd "${SV_DIR}" >/dev/null
+  git fetch origin
+  git checkout main
+  git reset --hard origin/main
+  popd >/dev/null
+else
+  echo "Repository invalid or missing. Performing fresh clean clone..."
+  rm -rf "${SV_DIR}"
+  git clone "$REPO_URL" "${SV_DIR}"
+fi
+
 # Ensure destination directories exist
 sudo mkdir -p "$DST_SUP" "$DST_CFG" "$DST_SEC" "$DST_LOG" "$DST_LIB"
 
