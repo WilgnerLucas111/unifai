@@ -100,6 +100,8 @@ easy / complex
 
 Keyman only performs **task difficulty classification and routing**.
 
+The current bootstrap path wires Keyman through the SecretVault installer, which points the config at the installed wrapper path and preserves `request_id` for audit linking.
+
 ---
 
 # Rule 2 — Local Execution (JohnDoe)

@@ -7,6 +7,8 @@ This document defines the **stable, minimal JSON protocol** for communication be
 
 The contract uses `stdin`/`stdout` for process-to-process communication. No network calls, no direct database access.
 
+The bootstrap installer configures SecretVault to invoke the installed wrapper path at `config/keyman_authorize.py`, so the contract does not depend on PATH resolution.
+
 ## Request Payload (SecretVault → Keyman)
 
 ```json
@@ -124,6 +126,8 @@ If Keyman process exits with non-zero status:
 If Keyman returns invalid JSON:
 - SecretVault treats as authorization failure.
 - Request is logged with the malformed response.
+
+All response paths should preserve `request_id` when available. The bootstrap wrapper emits `request_id: "error"` on parse or runtime failures so audit correlation remains explicit.
 
 ---
 
