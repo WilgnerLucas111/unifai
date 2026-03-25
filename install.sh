@@ -44,7 +44,7 @@ fi
 
 # Write minimal supervisor-secretvault config
 echo "[3/5] Configuring SecretVault..."
-cat > "$INSTALL_DIR/config/default.json" << 'EOF'
+cat > "$INSTALL_DIR/config/default.json" << EOF
 {
   "vault": {
     "defaultTtlSeconds": 300,
@@ -52,7 +52,7 @@ cat > "$INSTALL_DIR/config/default.json" << 'EOF'
     "interactiveFallback": true
   },
   "keyman": {
-    "command": "keyman_authorize.py"
+    "command": "$INSTALL_DIR/config/keyman_authorize.py"
   }
 }
 EOF
@@ -69,6 +69,7 @@ Responds with JSON on stdout: {is_authorized, decision, reason}
 """
 import sys
 import json
+import uuid
 
 class KeymanGuardian:
     def __init__(self):
@@ -80,6 +81,7 @@ class KeymanGuardian:
     def authorize(self, request):
         requester = request.get("requester")
         secret_alias = request.get("secret_alias")
+        request_id = request.get("request_id") or str(uuid.uuid4())
         
         allowed = self.role_permissions.get(requester, [])
         is_authorized = secret_alias in allowed
@@ -88,7 +90,8 @@ class KeymanGuardian:
             "is_authorized": is_authorized,
             "decision": "issue_grant" if is_authorized else "block_task",
             "reason": f"Role {requester} {'authorized' if is_authorized else 'unauthorized'}",
-            "ttl_seconds": request.get("ttl_seconds", 300) if is_authorized else 0
+            "ttl_seconds": request.get("ttl_seconds", 300) if is_authorized else 0,
+            "request_id": request_id
         }
 
 if __name__ == "__main__":
@@ -99,7 +102,7 @@ if __name__ == "__main__":
         json.dump(response, sys.stdout)
         sys.exit(0)
     except Exception as e:
-        error = {"is_authorized": False, "decision": "block_task", "reason": str(e)}
+        error = {"is_authorized": False, "decision": "block_task", "reason": str(e), "request_id": "error"}
         json.dump(error, sys.stdout)
         sys.exit(1)
 KEYMAN_EOF
@@ -150,7 +153,7 @@ echo "  Config directory: $INSTALL_DIR/config/"
 echo ""
 echo "Next Steps:"
 echo "1. Ensure SECRETVAULT_MASTER_KEY is securely stored"
-echo "2. Update $INSTALL_DIR/config/default.json with your Keyman path"
+echo "2. Review $INSTALL_DIR/config/default.json and $INSTALL_DIR/config/keyman_authorize.py if you need custom permissions"
 echo "3. Seed initial secrets using supervisor-secretvault CLI"
 echo ""
 echo "The governance layer is ready. Agents will now request access via Keyman."
