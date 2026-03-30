@@ -111,9 +111,13 @@ fi
 
 echo "[openclaw-start] Grant received. Starting OpenClaw with injected key..."
 
+# Hardcore Anti-Leak: Disable core dumps physically at OS level so crashed processes 
+# never bleed the ANTHROPIC_API_KEY to /var/crash
+ulimit -c 0
+
 # Launch OpenClaw — key lives only in the process env for this command, never in a config file
-# Using env directly without 'export' prevents the key from persisting in the shell environment
-exec env ANTHROPIC_API_KEY="$(cat "$GRANT_PATH")" openclaw gateway "$@"
+# We inject the Odometer Proxy (Bill) via ANTHROPIC_BASE_URL to intercept network fuel.
+exec env ANTHROPIC_BASE_URL="http://127.0.0.1:7701" ANTHROPIC_API_KEY="$(cat "$GRANT_PATH")" openclaw gateway "$@"
 LAUNCHER
 
 sudo chmod 0750 "${OPENCLAW_LAUNCHER}"
