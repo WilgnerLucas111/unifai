@@ -10,9 +10,13 @@ echo "=== UnifAI Bill Proxy & Telemetry E2E Test ==="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BILL_PROXY="$REPO_ROOT/supervisor/plugins/bill_guardian/bill_proxy.py"
+export UNIFAI_LOG_DIR="/tmp/unifai"
+SHADOW_LOG="$UNIFAI_LOG_DIR/shadow.log"
 
 # Stop existing proxy if running
 pkill -f "bill_proxy.py" || true
+mkdir -p "$UNIFAI_LOG_DIR"
+rm -f "$SHADOW_LOG"
 
 # 1. Start the proxy in background
 echo "[INFO] Starting Bill Proxy on port 7701..."
@@ -51,10 +55,6 @@ fi
 
 echo "[INFO] Validating Shadow Telemetry and Redaction..."
 sleep 1
-
-SHADOW_LOG="/tmp/unifai_shadow.log"
-# Test environment should only trust tmp log, isolated from root OS
-export UNIFAI_LOG_DIR="/tmp/"
 
 if ! [ -f "$SHADOW_LOG" ]; then
     echo "[FAIL] Shadow Log not generated at $SHADOW_LOG"
