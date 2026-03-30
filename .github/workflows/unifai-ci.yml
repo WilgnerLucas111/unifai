@@ -47,20 +47,24 @@ jobs:
         run: chmod +x scripts/smoke_test_*.sh
 
       - name: Smoke Test - OpenClaw Injection
-        run: ./scripts/smoke_test_openclaw_injection.sh
-        run: sleep 2 && pkill -f "bill_proxy.py" || true
+        run: |
+          ./scripts/smoke_test_openclaw_injection.sh
+          sleep 2 && pkill -f "bill_proxy.py" || true
 
       - name: Smoke Test - The Fuel (Bill Gauge)
-        run: ./scripts/smoke_test_bill_gauge.sh
-        run: sleep 2 && pkill -f "bill_proxy.py" || true
+        run: |
+          ./scripts/smoke_test_bill_gauge.sh
+          sleep 2 && pkill -f "bill_proxy.py" || true
 
       - name: Smoke Test - Keyman Rotation (Hot-Swap)
-        run: ./scripts/smoke_test_key_rotation.sh
-        run: sleep 2 && pkill -f "bill_proxy.py" || true
+        run: |
+          ./scripts/smoke_test_key_rotation.sh
+          sleep 2 && pkill -f "bill_proxy.py" || true
 
       - name: Smoke Test - C2 Commander (Telegram Bridge)
-        run: ./scripts/smoke_test_commander.sh
-        run: sleep 2 && pkill -f "bill_proxy.py" || true
+        run: |
+          ./scripts/smoke_test_commander.sh
+          sleep 2 && pkill -f "bill_proxy.py" || true
 
       - name: Integrity Verified - Telegram Alert
         if: success()
