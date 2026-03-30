@@ -86,6 +86,7 @@ fi
 echo "Installing systemd services..."
 sudo install -m 0644 "$SCRIPT_DIR/../systemd/lyra-supervisor.service" /etc/systemd/system/lyra-supervisor.service
 sudo install -m 0644 "$SCRIPT_DIR/../systemd/lyra-webui.service" /etc/systemd/system/lyra-webui.service
+sudo install -m 0644 "$SCRIPT_DIR/../systemd/lyra-telegram-bridge.service" /etc/systemd/system/lyra-telegram-bridge.service
 
 # Reload units so systemd picks up changes
 sudo systemctl daemon-reload
@@ -93,13 +94,16 @@ sudo systemctl daemon-reload
 # Make sure the service is enabled on boot (idempotent)
 sudo systemctl enable lyra-supervisor.service >/dev/null
 sudo systemctl enable lyra-webui.service >/dev/null
+sudo systemctl enable lyra-telegram-bridge.service >/dev/null
 
 # Restart to ensure the running process matches the latest unit/code
 echo "Restarting services (lyra-supervisor and lyra-webui)..."
 sudo systemctl restart lyra-supervisor.service
 sudo systemctl restart lyra-webui.service
+sudo systemctl restart lyra-telegram-bridge.service
 
 # Show a short status summary (do not fail the whole stage on status output)
 sudo systemctl --no-pager -l status lyra-supervisor.service || true
+sudo systemctl --no-pager -l status lyra-telegram-bridge.service || true
 
 echo "Supervisor installation complete."
