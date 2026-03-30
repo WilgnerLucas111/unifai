@@ -24,6 +24,7 @@ BUDGET_FILE = Path(os.getenv("UNIFAI_BUDGET_FILE", "/tmp/unifai_budget.json"))
 SIGNAL_SCRIPT = Path(os.getenv("UNIFAI_SIGNAL_SCRIPT", str(ROOT_DIR / "scripts" / "signal_alert.sh")))
 FUSE_TRIP_BIN = Path(os.getenv("UNIFAI_FUSE_TRIP_BIN", str(SUPERVISOR_DIR / "bin" / "fuse-trip")))
 KEYMAN_CLI = Path(os.getenv("UNIFAI_KEYMAN_CLI", str(SUPERVISOR_DIR / "plugins" / "keyman_guardian" / "keyman_auth_cli.py")))
+WASH_SCRIPT = Path(os.getenv("UNIFAI_WASH_SCRIPT", str(ROOT_DIR / "scripts" / "wash_and_sleep.sh")))
 GRANT_PATH_FILE = os.getenv("UNIFAI_GRANT_PATH_FILE", "/tmp/unifai_grant_path.current")
 KEY_ROTATE_ALIAS = os.getenv("UNIFAI_KEY_ROTATE_ALIAS", "codex-oauth")
 KEY_ROTATE_TTL = os.getenv("UNIFAI_KEY_ROTATE_TTL", "300")
@@ -169,6 +170,33 @@ def command_kill():
     return f"Kill failed: {error}"
 
 
+def command_wash(chat_id):
+    if not WASH_SCRIPT.exists():
+        return f"Wash failed: script not found at {WASH_SCRIPT}"
+
+    if not os.access(WASH_SCRIPT, os.X_OK):
+        return f"Wash failed: script is not executable at {WASH_SCRIPT}"
+
+    result = subprocess.run(
+        [
+            str(WASH_SCRIPT),
+            "--operator",
+            str(chat_id),
+            "--reason",
+            "telegram-wash",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0:
+        output = (result.stdout or "wash completed").strip()
+        return f"Wash executed: {output}"
+
+    details = (result.stderr or result.stdout or "wash-error").strip()
+    return f"Wash failed: {details}"
+
+
 def handle_command(chat_id, text):
     command_line = (text or "").strip()
     log_audit("COMMAND_RECEIVED", chat_id, command_line)
@@ -197,8 +225,10 @@ def handle_command(chat_id, text):
             result = command_rotate()
         elif command == "/kill":
             result = command_kill()
+        elif command == "/wash":
+            result = command_wash(chat_id)
         else:
-            result = "Unknown command. Available: /status, /add_budget, /rotate, /kill"
+            result = "Unknown command. Available: /status, /add_budget, /rotate, /kill, /wash"
             
         log_audit("COMMAND_EXECUTED", chat_id, f"cmd={command} result={result}")
         return result

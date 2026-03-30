@@ -43,7 +43,6 @@ jobs:
           sudo chmod -R 777 /var/log/unifai
 
       - name: Ignition Sequence - Grant Permissions
-
         run: chmod +x scripts/smoke_test_*.sh
 
       - name: Smoke Test - OpenClaw Injection
@@ -65,6 +64,11 @@ jobs:
         run: |
           ./scripts/smoke_test_commander.sh
           sleep 2 && pkill -f "bill_proxy.py" || true
+
+      - name: Smoke Test - Wash and Sleep (Respawn)
+        run: |
+          ./scripts/smoke_test_wash_and_sleep.sh
+          sleep 2 && pkill -f "openclaw-gateway" || true
 
       - name: Integrity Verified - Telegram Alert
         if: success()
