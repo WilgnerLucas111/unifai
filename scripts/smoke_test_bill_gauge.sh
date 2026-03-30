@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # UnifAI "The Fuel" / Bill Proxy Smoke Test
-# Validates that the Anthropic request is intercepted, proxy drops budget, and cuts off via HTTP 429.
+# Validates that the Anthropic request is intercepted, proxy drops budget, limits via 429,
+# and logs telemetry while properly redacting payload keys.
 
 set -euo pipefail
 
-echo "=== UnifAI Bill Proxy (Odometer) E2E Test ==="
+echo "=== UnifAI Bill Proxy & Telemetry E2E Test ==="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -21,21 +22,19 @@ PROXY_PID=$!
 # Give it a second to boot
 sleep 2
 
-# Force budget to 10 tokens so we can easily exhaust it
-echo '{"budget": 10}' > /tmp/unifai_budget.json
-
-echo "[INFO] Injecting mock request through the Odometer..."
-
-# 2. Make a request that will cost > 10 tokens (we mock Anthropic here, but since we don't have a real key, 
-# it will hit Anthropic and fail with 401. However, to test the 429 budget exhaustion, we just manually deplete the budget)
-
-# Deplete the budget physically to 0 for the test
+# Force budget to 0 tokens so we instantly trigger Fuel Cut and Telemetry Alerts
 echo '{"budget": 0}' > /tmp/unifai_budget.json
 
 echo "[INFO] Sending request with 0 tokens in the tank..."
+
+# We compose a fake key that mimics Anthropic to trigger the Redaction regex
+PART1="sk-ant-"
+PART2="api03-THIS-IS-A-TEST-KEY-XYZ"
+FAKE_KEY="${PART1}${PART2}"
+
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://127.0.0.1:7701/v1/messages \
-  -H "x-api-key: sk-ant-_FAKE" \
+  -H "x-api-key: $FAKE_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
   -d '{"model":"claude-3-haiku","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
@@ -50,5 +49,36 @@ else
     exit 1
 fi
 
+echo "[INFO] Validating Shadow Telemetry and Redaction..."
+sleep 1
+
+SHADOW_LOG="/tmp/unifai_shadow.log"
+if [ -f "/var/log/unifai/shadow.log" ]; then
+   SHADOW_LOG="/var/log/unifai/shadow.log"
+fi
+
+if ! [ -f "$SHADOW_LOG" ]; then
+    echo "[FAIL] Shadow Log not generated at $SHADOW_LOG"
+    kill -9 $PROXY_PID || true
+    exit 1
+fi
+
+if grep -q "REQUEST SECRETS: \[REDACTED\]" "$SHADOW_LOG"; then
+    echo "[PASS] Shadow Logger safely redacted the secret key."
+else
+    echo "[FAIL] Missing or unredacted secret in the Shadow Log!"
+    cat "$SHADOW_LOG"
+    kill -9 $PROXY_PID || true
+    exit 1
+fi
+
+if grep -q "FUEL CUT: Budget exceeded" "$SHADOW_LOG"; then
+    echo "[PASS] Shadow Telemetry correctly registered the Throttle event."
+else
+    echo "[FAIL] Throttle event not recorded in Shadow Log."
+    kill -9 $PROXY_PID || true
+    exit 1
+fi
+
 kill -9 $PROXY_PID || true
-echo "=== SMOKE TEST PASSED: Fuel Throttle Engaged ==="
+echo "=== SMOKE TEST PASSED: Telemetry and Signal Hooks Engaged ==="
