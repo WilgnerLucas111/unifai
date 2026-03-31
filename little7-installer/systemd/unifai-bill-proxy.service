@@ -5,10 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=unifai-operator
+Group=unifai-operator
+UMask=0027
+RuntimeDirectory=little7
+RuntimeDirectoryMode=0770
 WorkingDirectory=/opt/little7/supervisor
 Environment=BILL_PROXY_PORT=7701
+Environment=UNIFAI_LOG_DIR=/var/log/unifai
+Environment=UNIFAI_CAGE_WATCHDOG_PID_FILE=/run/little7/unifai_xrdp_cage_watchdog.pid
 
 ExecStart=/usr/bin/python3 /opt/little7/supervisor/plugins/bill_guardian/bill_proxy.py
 

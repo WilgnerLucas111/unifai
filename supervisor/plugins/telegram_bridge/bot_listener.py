@@ -159,8 +159,12 @@ def command_kill():
     if not FUSE_TRIP_BIN.exists():
         return f"Kill failed: fuse-trip not found at {FUSE_TRIP_BIN}"
 
+    command = [str(FUSE_TRIP_BIN), "600", "TELEGRAM_MANUAL_TRIP", "telegram-bridge-command"]
+    if os.geteuid() != 0:
+        command = [os.getenv("SUDO_BIN", "sudo"), "-n"] + command
+
     result = subprocess.run(
-        [str(FUSE_TRIP_BIN), "600", "TELEGRAM_MANUAL_TRIP", "telegram-bridge-command"],
+        command,
         capture_output=True,
         text=True,
     )

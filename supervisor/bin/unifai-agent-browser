@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BILL_PROXY_PORT="${BILL_PROXY_PORT:-7701}"
+BILL_PROXY_HOST="${BILL_PROXY_HOST:-127.0.0.1}"
+UNIFAI_AGENT_BROWSER_BIN="${UNIFAI_AGENT_BROWSER_BIN:-agent-browser}"
+UNIFAI_AGENT_BROWSER_LOG_PATH="${UNIFAI_AGENT_BROWSER_LOG_PATH:-/tmp/unifai_agent_browser.log}"
+UNIFAI_AGENT_BROWSER_PROXY_URL="http://${BILL_PROXY_HOST}:${BILL_PROXY_PORT}"
+
+CHILD_PID=""
+
+log_wrapper() {
+  local msg="$1"
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$msg" >> "$UNIFAI_AGENT_BROWSER_LOG_PATH"
+}
+
+resolve_agent_browser_bin() {
+  if [[ "$UNIFAI_AGENT_BROWSER_BIN" == */* ]]; then
+    if [[ ! -x "$UNIFAI_AGENT_BROWSER_BIN" ]]; then
+      echo "[FAIL] UNIFAI_AGENT_BROWSER_BIN is not executable: $UNIFAI_AGENT_BROWSER_BIN" >&2
+      exit 1
+    fi
+    printf '%s\n' "$UNIFAI_AGENT_BROWSER_BIN"
+    return
+  fi
+
+  if command -v "$UNIFAI_AGENT_BROWSER_BIN" >/dev/null 2>&1; then
+    command -v "$UNIFAI_AGENT_BROWSER_BIN"
+    return
+  fi
+
+  echo "[FAIL] agent-browser binary not found. Set UNIFAI_AGENT_BROWSER_BIN or install agent-browser." >&2
+  exit 1
+}
+
+assert_no_proxy_bypass_flags() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --proxy|--proxy=*|--proxy-server|--proxy-server=*|--no-proxy|--no-proxy=*|--proxy-bypass-list|--proxy-bypass-list=*)
+        echo "[FAIL] Proxy override flags are blocked by UnifAI wrapper governance: $arg" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+terminate_child_tree() {
+  local signal="$1"
+  if [[ -n "$CHILD_PID" ]] && kill -0 "$CHILD_PID" >/dev/null 2>&1; then
+    kill "-$signal" -- "-$CHILD_PID" >/dev/null 2>&1 || true
+  fi
+}
+
+on_term() {
+  log_wrapper "wrapper_signal signal=TERM action=terminate_tree child_pid=${CHILD_PID:-none}"
+  terminate_child_tree TERM
+  sleep 1
+  terminate_child_tree KILL
+  wait "$CHILD_PID" >/dev/null 2>&1 || true
+  exit 143
+}
+
+main() {
+  local agent_browser_bin
+  agent_browser_bin="$(resolve_agent_browser_bin)"
+
+  assert_no_proxy_bypass_flags "$@"
+
+  log_wrapper "wrapper_start proxy=${UNIFAI_AGENT_BROWSER_PROXY_URL}"
+
+  # Spawn child with a minimal environment to avoid leaking parent secrets.
+  setsid env -i \
+    PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" \
+    HOME="${HOME:-/tmp}" \
+    USER="${USER:-unifai}" \
+    LOGNAME="${LOGNAME:-unifai}" \
+    LANG="${LANG:-C.UTF-8}" \
+    LC_ALL="${LC_ALL:-C.UTF-8}" \
+    HTTP_PROXY="$UNIFAI_AGENT_BROWSER_PROXY_URL" \
+    HTTPS_PROXY="$UNIFAI_AGENT_BROWSER_PROXY_URL" \
+    http_proxy="$UNIFAI_AGENT_BROWSER_PROXY_URL" \
+    https_proxy="$UNIFAI_AGENT_BROWSER_PROXY_URL" \
+    NO_PROXY="127.0.0.1,localhost" \
+    no_proxy="127.0.0.1,localhost" \
+    UNIFAI_BILL_PROXY_URL="$UNIFAI_AGENT_BROWSER_PROXY_URL" \
+    "$agent_browser_bin" "$@" --proxy "$UNIFAI_AGENT_BROWSER_PROXY_URL" &
+  CHILD_PID=$!
+
+  log_wrapper "wrapper_child_started pid=${CHILD_PID}"
+
+  trap on_term TERM INT
+
+  wait "$CHILD_PID"
+  local exit_code=$?
+
+  log_wrapper "wrapper_child_exit code=${exit_code}"
+  exit "$exit_code"
+}
+
+main "$@"

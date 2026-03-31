@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+DRY_RUN=0
+if [ "${1:-}" = "--dry-run" ]; then
+    DRY_RUN=1
+    shift
+fi
+
 DURATION_SEC="${1:-600}"          # default 10 minutes
 REASON_CODE="${2:-MANUAL_TRIP}"
 NOTE="${3:-manual}"
@@ -16,6 +22,12 @@ STATE_FILE="${STATE_DIR}/fuse_state.json"
 SV_CLI="/opt/little7/supervisor/supervisor-secretvault/src/cli.js"
 
 echo "[FUSE-TRIP] Initiating emergency governance lockdown: ${REASON_CODE}..."
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[DRY-RUN] Fuse governance path validated."
+    echo "[DRY-RUN] Scope: cloud_all | Until: $UNTIL | Reason: $REASON_CODE"
+    exit 0
+fi
 
 # 1. State Lockdown: Write the trip file to prevent future boots
 sudo mkdir -p "$STATE_DIR"

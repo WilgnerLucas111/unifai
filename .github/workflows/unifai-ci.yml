@@ -70,6 +70,16 @@ jobs:
           ./scripts/smoke_test_xrdp_cage.sh
           sleep 2 && pkill -f "bill_proxy.py" || true
 
+      - name: Smoke Test - Agent Browser Env Leak Guard
+        run: |
+          ./scripts/smoke_test_agent_browser_env_leak.sh
+          sleep 1 && pkill -f "agent-browser" || true
+
+      - name: Smoke Test - Agent Browser Scope Eradication
+        run: |
+          ./scripts/smoke_test_agent_browser_scope_eradication.sh
+          sleep 1 && pkill -f "agent-browser" || true
+
       - name: Smoke Test - Wash and Sleep (Respawn)
         run: |
           ./scripts/smoke_test_wash_and_sleep.sh

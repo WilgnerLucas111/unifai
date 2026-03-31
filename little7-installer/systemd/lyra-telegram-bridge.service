@@ -6,11 +6,18 @@ Requires=lyra-supervisor.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=unifai-operator
+Group=unifai-operator
+UMask=0027
+RuntimeDirectory=little7
+RuntimeDirectoryMode=0770
 WorkingDirectory=/opt/little7/supervisor
 
 ExecStart=/usr/bin/python3 /opt/little7/supervisor/plugins/telegram_bridge/bot_listener.py
+
+Environment=UNIFAI_AUDIT_LOG=/var/log/unifai/audit.log
+Environment=SECRETVAULT_MASTER_KEY_FILE=/etc/little7/secretvault_master.key
+Environment=UNIFAI_CAGE_WATCHDOG_PID_FILE=/run/little7/unifai_xrdp_cage_watchdog.pid
 
 # Authorized operator and optional runtime overrides
 EnvironmentFile=-/etc/little7/telegram_bridge.env
@@ -25,5 +32,4 @@ StandardError=journal
 SyslogIdentifier=lyra-telegram-bridge
 
 [Install]
-WantedBy=multi-user.target
 WantedBy=multi-user.target

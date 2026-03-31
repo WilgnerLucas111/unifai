@@ -27,6 +27,19 @@ readonly DST_CFG="/etc/little7"
 readonly DST_SEC="/etc/little7/secrets"
 readonly DST_LOG="/var/log/little7"
 readonly DST_LIB="/var/lib/little7"
+readonly SERVICE_USER="${LITTLE7_SERVICE_USER:-unifai-operator}"
+readonly SERVICE_GROUP="${LITTLE7_SERVICE_GROUP:-unifai-operator}"
+readonly UNIFAI_LOG_DIR="/var/log/unifai"
+readonly WATCHDOG_RUNTIME_DIR="/run/little7"
+readonly WATCHDOG_PID_FILE="${WATCHDOG_RUNTIME_DIR}/unifai_xrdp_cage_watchdog.pid"
+readonly SV_RUNTIME_ROOT="${DST_SUP}/supervisor-secretvault"
+readonly SV_RUNTIME_CONFIG="${SV_RUNTIME_ROOT}/config"
+readonly SV_RUNTIME_SECRETS="${SV_RUNTIME_ROOT}/secrets"
+readonly SV_RUNTIME_GRANTS="${SV_RUNTIME_ROOT}/grants"
+readonly SV_RUNTIME_AUDIT="${SV_RUNTIME_ROOT}/audit"
+readonly SV_RUNTIME_TMP="${SV_RUNTIME_ROOT}/tmp"
+readonly MASTER_KEY_FILE="${DST_CFG}/secretvault_master.key"
+readonly GOVERNANCE_SUDOERS_FILE="/etc/sudoers.d/little7-${SERVICE_USER}-governance"
 readonly LOCK_FILE="${INSTALLER_DIR}/config/supervisor-secretvault.lock"
 readonly MANIFEST_DIR="${DST_LIB}/manifests"
 readonly MANIFEST_FILE="${MANIFEST_DIR}/stage20-supervisor.manifest"
@@ -115,6 +128,102 @@ enforce_pinned_secretvault() {
   SV_SOURCE_MODE="immutable-artifact"
 }
 
+resolve_nologin_shell() {
+  if command -v nologin >/dev/null 2>&1; then
+    command -v nologin
+    return 0
+  fi
+
+  if [ -x "/usr/sbin/nologin" ]; then
+    echo "/usr/sbin/nologin"
+    return 0
+  fi
+
+  if [ -x "/usr/bin/nologin" ]; then
+    echo "/usr/bin/nologin"
+    return 0
+  fi
+
+  fail "nologin shell not found on host"
+}
+
+ensure_service_principal() {
+  local nologin_shell
+  nologin_shell="$(resolve_nologin_shell)"
+
+  if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+    echo "Creating service group: $SERVICE_GROUP"
+    sudo groupadd --system "$SERVICE_GROUP"
+  fi
+
+  if id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    sudo usermod --gid "$SERVICE_GROUP" --shell "$nologin_shell" "$SERVICE_USER"
+  else
+    echo "Creating service user: $SERVICE_USER"
+    sudo useradd --system \
+      --gid "$SERVICE_GROUP" \
+      --home-dir "$DST_LIB" \
+      --no-create-home \
+      --shell "$nologin_shell" \
+      --comment "UnifAI least-privilege operator" \
+      "$SERVICE_USER"
+  fi
+}
+
+tighten_runtime_permissions() {
+  echo "Applying least-privilege runtime permissions..."
+
+  sudo mkdir -p "$UNIFAI_LOG_DIR" "$WATCHDOG_RUNTIME_DIR"
+  sudo chown root:"$SERVICE_GROUP" "$UNIFAI_LOG_DIR" "$WATCHDOG_RUNTIME_DIR"
+  sudo chmod 2770 "$UNIFAI_LOG_DIR"
+  sudo chmod 2770 "$WATCHDOG_RUNTIME_DIR"
+
+  if [ -e "$WATCHDOG_PID_FILE" ]; then
+    sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$WATCHDOG_PID_FILE"
+    sudo chmod 0660 "$WATCHDOG_PID_FILE"
+  fi
+
+  if [ -d "$SV_RUNTIME_ROOT" ]; then
+    for dir in "$SV_RUNTIME_CONFIG" "$SV_RUNTIME_SECRETS"; do
+      if [ -d "$dir" ]; then
+        sudo chown root:"$SERVICE_GROUP" "$dir"
+        sudo chmod 0750 "$dir"
+        sudo find "$dir" -type f -exec chmod 0640 {} \;
+      fi
+    done
+
+    for dir in "$SV_RUNTIME_GRANTS" "$SV_RUNTIME_AUDIT" "$SV_RUNTIME_TMP"; do
+      if [ -d "$dir" ]; then
+        sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$dir"
+      else
+        sudo install -d -m 0770 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$dir"
+      fi
+      sudo chmod 0770 "$dir"
+      sudo find "$dir" -type f -exec chmod 0660 {} \;
+    done
+  fi
+
+  if [ -f "$MASTER_KEY_FILE" ]; then
+    sudo chown root:"$SERVICE_GROUP" "$MASTER_KEY_FILE"
+    sudo chmod 0640 "$MASTER_KEY_FILE"
+  fi
+}
+
+install_governance_sudoers() {
+  local sudoers_tmp
+
+  sudoers_tmp="$(mktemp)"
+  cat > "$sudoers_tmp" <<EOF
+Defaults:${SERVICE_USER} !requiretty
+${SERVICE_USER} ALL=(root) NOPASSWD: /opt/little7/supervisor/bin/fuse-trip
+EOF
+
+  sudo install -m 0440 "$sudoers_tmp" "$GOVERNANCE_SUDOERS_FILE"
+  rm -f "$sudoers_tmp"
+
+  sudo visudo -cf "$GOVERNANCE_SUDOERS_FILE" >/dev/null
+}
+
 write_manifest() {
   local repo_commit
   local lock_sha
@@ -161,6 +270,11 @@ require_cmd tar
 require_cmd sha256sum
 require_cmd sudo
 require_cmd systemctl
+require_cmd getent
+require_cmd groupadd
+require_cmd useradd
+require_cmd usermod
+require_cmd visudo
 
 [ -f "$LOCK_FILE" ] || fail "Lock file not found: $LOCK_FILE"
 
@@ -209,9 +323,14 @@ else
   echo "Warning: secrets directory not found: $SRC_SEC (skipping)"
 fi
 
+echo "Ensuring dedicated service principal..."
+ensure_service_principal
+tighten_runtime_permissions
+install_governance_sudoers
+
 # Install systemd unit from the installer repository (source of truth)
 echo "Installing systemd services..."
-for unit in lyra-supervisor.service lyra-webui.service lyra-telegram-bridge.service; do
+for unit in lyra-supervisor.service lyra-webui.service lyra-telegram-bridge.service unifai-bill-proxy.service; do
   [ -f "$SCRIPT_DIR/../systemd/$unit" ] || fail "Missing systemd unit template: $SCRIPT_DIR/../systemd/$unit"
   sudo install -m 0644 "$SCRIPT_DIR/../systemd/$unit" "/etc/systemd/system/$unit"
 done
@@ -223,16 +342,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable lyra-supervisor.service >/dev/null
 sudo systemctl enable lyra-webui.service >/dev/null
 sudo systemctl enable lyra-telegram-bridge.service >/dev/null
+sudo systemctl enable unifai-bill-proxy.service >/dev/null
 
 # Restart to ensure the running process matches the latest unit/code
-echo "Restarting services (lyra-supervisor and lyra-webui)..."
+echo "Restarting services (lyra-supervisor, lyra-webui, lyra-telegram-bridge, unifai-bill-proxy)..."
 sudo systemctl restart lyra-supervisor.service
 sudo systemctl restart lyra-webui.service
 sudo systemctl restart lyra-telegram-bridge.service
+sudo systemctl restart unifai-bill-proxy.service
 
 # Show a short status summary (do not fail the whole stage on status output)
 sudo systemctl --no-pager -l status lyra-supervisor.service || true
 sudo systemctl --no-pager -l status lyra-telegram-bridge.service || true
+sudo systemctl --no-pager -l status unifai-bill-proxy.service || true
 
 echo "Writing immutable install manifest..."
 write_manifest
