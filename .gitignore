@@ -45,6 +45,7 @@ little7-installer/config/active_models.yml
 .env.*
 
 /supervisor/supervisor-secretvault/*
+/supervisor/supervisor-secretvault/
 
 # =========================
 # Local testing artifacts

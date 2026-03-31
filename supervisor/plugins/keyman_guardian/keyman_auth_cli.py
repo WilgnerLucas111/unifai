@@ -24,7 +24,9 @@ import sys
 import json
 from typing import Dict, Any
 import uuid
-from datetime import datetime
+import os
+import subprocess
+from pathlib import Path
 
 
 class KeymanGuardian:
@@ -138,10 +140,145 @@ class KeymanCLI:
             sys.stderr.write(f"Keyman fatal error: {str(e)}\n")
             return 1
 
+    def run_rotate(self, argv):
+        """Rotate grant path by requesting a fresh SecretVault grant and writing it to a pointer file."""
+        try:
+            args = self._parse_rotate_args(argv)
+            cli_path = self._resolve_secretvault_cli(args)
+            command = self._build_rotate_command(cli_path, args)
+
+            result = subprocess.run(command, capture_output=True, text=True)
+            if result.returncode != 0:
+                sys.stdout.write(json.dumps({
+                    "ok": False,
+                    "error": "secretvault-rotate-failed",
+                    "details": (result.stderr or result.stdout or "").strip()[:400],
+                }))
+                sys.stdout.flush()
+                return 2
+
+            raw_output = (result.stdout or "{}").strip()
+            payload = json.loads(raw_output)
+            if not payload.get("ok"):
+                sys.stdout.write(json.dumps({
+                    "ok": False,
+                    "error": "secretvault-request-denied",
+                    "details": payload,
+                }))
+                sys.stdout.flush()
+                return 3
+
+            grant_path = payload.get("path")
+            if not grant_path:
+                sys.stdout.write(json.dumps({
+                    "ok": False,
+                    "error": "secretvault-response-missing-path",
+                }))
+                sys.stdout.flush()
+                return 4
+
+            grant_path_file = Path(args["grant_path_file"])
+            grant_path_file.parent.mkdir(parents=True, exist_ok=True)
+            grant_path_file.write_text(f"{grant_path}\n", encoding="utf-8")
+
+            sys.stdout.write(json.dumps({
+                "ok": True,
+                "rotated": True,
+                "grant_path_file": str(grant_path_file),
+                "grant_path": grant_path,
+                "expires_at": payload.get("expiresAt"),
+                "ttl_seconds": payload.get("ttlSeconds"),
+            }))
+            sys.stdout.flush()
+            return 0
+        except Exception as e:
+            sys.stdout.write(json.dumps({
+                "ok": False,
+                "error": "keyman-rotate-error",
+                "details": str(e),
+            }))
+            sys.stdout.flush()
+            return 1
+
+    def _parse_rotate_args(self, argv):
+        parsed = {
+            "alias": None,
+            "purpose": "key-rotation",
+            "agent": "keyman_rotator",
+            "ttl": "300",
+            "grant_path_file": "/tmp/unifai_grant_path.current",
+            "secretvault_cli": None,
+        }
+
+        i = 0
+        while i < len(argv):
+            token = argv[i]
+            if token.startswith("--"):
+                key = token[2:].replace("-", "_")
+                if i + 1 >= len(argv):
+                    raise ValueError(f"missing value for {token}")
+                parsed[key] = argv[i + 1]
+                i += 2
+            else:
+                i += 1
+
+        if not parsed.get("alias"):
+            raise ValueError("rotate requires --alias")
+        return parsed
+
+    def _resolve_secretvault_cli(self, args):
+        if args.get("secretvault_cli"):
+            cli = Path(args["secretvault_cli"])
+            if not cli.exists():
+                raise FileNotFoundError(f"secretvault cli not found: {cli}")
+            return cli
+
+        env_cli = os.getenv("SECRETVAULT_CLI_PATH")
+        if env_cli:
+            cli = Path(env_cli)
+            if not cli.exists():
+                raise FileNotFoundError(f"SECRETVAULT_CLI_PATH not found: {cli}")
+            return cli
+
+        default_cli = Path(__file__).resolve().parents[2] / "supervisor-secretvault" / "src" / "cli.js"
+        if default_cli.exists():
+            return default_cli
+
+        installed_cli = Path("/opt/little7/supervisor/supervisor-secretvault/src/cli.js")
+        if installed_cli.exists():
+            return installed_cli
+
+        raise FileNotFoundError("unable to resolve SecretVault CLI path")
+
+    def _build_rotate_command(self, cli_path, args):
+        if cli_path.suffix == ".js":
+            node_bin = os.getenv("NODE_BIN", "node")
+            return [
+                node_bin,
+                str(cli_path),
+                "request",
+                "--alias", args["alias"],
+                "--purpose", args["purpose"],
+                "--agent", args["agent"],
+                "--ttl", str(args["ttl"]),
+            ]
+
+        return [
+            str(cli_path),
+            "request",
+            "--alias", args["alias"],
+            "--purpose", args["purpose"],
+            "--agent", args["agent"],
+            "--ttl", str(args["ttl"]),
+        ]
+
 
 def main():
     cli = KeymanCLI()
-    exit_code = cli.run_interactive()
+    if len(sys.argv) > 1 and sys.argv[1] == "rotate":
+        exit_code = cli.run_rotate(sys.argv[2:])
+    else:
+        exit_code = cli.run_interactive()
     sys.exit(exit_code)
 
 

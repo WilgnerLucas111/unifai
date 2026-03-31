@@ -1,0 +1,24 @@
+[Unit]
+Description=UnifAI Bill Guardian Proxy (The Fuel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/little7/supervisor
+
+ExecStart=/usr/bin/python3 /opt/little7/supervisor/plugins/bill_guardian/bill_proxy.py
+
+Restart=always
+RestartSec=5
+ProtectSystem=full
+NoNewPrivileges=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=unifai-proxy
+
+[Install]
+WantedBy=multi-user.target

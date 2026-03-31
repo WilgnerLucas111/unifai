@@ -3,8 +3,9 @@ set -euo pipefail
 
 echo "== Stage 40: Local LLM Runtime (LocalAI) =="
 
-PROJECT_ROOT="${PROJECT_ROOT:-$HOME/projects/unifai}"
-CONFIG_DIR="${PROJECT_ROOT}/little7-installer/config"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(dirname "$DIR")}"
+CONFIG_DIR="${PROJECT_ROOT}/config"
 
 CONTAINER_NAME="${CONTAINER_NAME:-local-ai}"
 IMAGE_NAME="${IMAGE_NAME:-localai/localai:latest}"
