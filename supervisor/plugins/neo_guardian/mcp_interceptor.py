@@ -12,6 +12,8 @@ class ToolManifest:
     name: str
     description: str
     requires_approval: bool = True
+    max_tokens_per_call: int = 4096
+    timeout_seconds: int = 30
     input_schema: Dict[str, Any] = field(default_factory=dict)
     forbidden_values: List[str] = field(default_factory=list)
 
@@ -52,8 +54,19 @@ class MCPInterceptor:
             if pattern.lower() in arg_string:
                 return GovernanceDecision.REJECT, f"Forbidden pattern detected in arguments: {pattern}"
 
-        # 5. Rule 0 Enforcement
+        # 5. Resource & Execution Limits
+        requested_timeout = arguments.get("timeout")
+        if requested_timeout and isinstance(requested_timeout, (int, float)):
+            if requested_timeout > manifest.timeout_seconds:
+                return GovernanceDecision.REJECT, f"Requested timeout ({requested_timeout}s) strictly exceeds manifest limit ({manifest.timeout_seconds}s). Agent attempting resource exhaustion."
+
+        if arguments.get("run_in_background") is True:
+            return GovernanceDecision.PENDING_APPROVAL, "CRITICAL: Agent requested background execution. Possible silent data exfiltration vector. Rerouting to Rule 0 (Human)."
+
+        # 6. Rule 0 Enforcement
         if manifest.requires_approval:
             return GovernanceDecision.PENDING_APPROVAL, f"Tool '{tool_name}' requires Human-in-the-loop authorization."
 
+        # TODO: Sincronização com o Bill. 
+        # O Neo deve reportar o "estimated_token_cost" extraído via max_tokens_per_call para o plugin Bill antes da liberação da tarefa final.
         return GovernanceDecision.ALLOW, "Pre-execution checks passed."
