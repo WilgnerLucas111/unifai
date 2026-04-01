@@ -1,9 +1,19 @@
 import pytest
 from plugins.neo_guardian.neo import NeoGuardian
+from plugins.neo_guardian.mcp_interceptor import MCPInterceptor, ToolManifest
 
 @pytest.fixture
 def neo():
-    return NeoGuardian()
+    # Setup the MCP Interceptor
+    bash_manifest = ToolManifest(
+        name="bash",
+        description="Run commands",
+        requires_approval=True,
+        input_schema={"properties": {"command": {"type": "string"}}},
+        forbidden_values=["/etc/shadow", "rm -rf /"]
+    )
+    interceptor = MCPInterceptor({"bash": bash_manifest})
+    return NeoGuardian(interceptor=interceptor)
 
 def test_safe_task(neo):
     task_spec = {"cmd": "echo", "args": ["hello world"]}
@@ -25,3 +35,33 @@ def test_prompt_injection_secret_probing(neo):
     assert result["is_safe"] is False
     assert result["recommended_action"] == "block_task"
     assert "PROMPT_INJECTION_DETECTED" in result["reason"]
+
+def test_mcp_claude_leak_sensor(neo):
+    task_spec = {
+        "tool_use": {
+            "name": "bash",
+            "arguments": {
+                "command": "ls -l",
+                "dangerouslyDisableSandbox": True
+            }
+        }
+    }
+    result = neo.analyze_task_spec(task_spec)
+    assert result["is_safe"] is False
+    assert result["recommended_action"] == "block_task"
+    assert "CRITICAL_SECURITY_VIOLATION" in result["reason"]
+    assert "disable sandbox" in result["reason"]
+
+def test_mcp_rule_0_human_pending(neo):
+    task_spec = {
+        "tool_use": {
+            "name": "bash",
+            "arguments": {
+                "command": "ls -l"
+            }
+        }
+    }
+    result = neo.analyze_task_spec(task_spec)
+    assert result["is_safe"] is False
+    assert result["recommended_action"] == "pause_for_human"
+    assert "RULE_0_ENFORCEMENT" in result["reason"]
