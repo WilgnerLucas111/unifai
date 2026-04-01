@@ -307,10 +307,79 @@ def telegram_api_call(token, method, payload):
 
 
 def send_telegram_message(token, chat_id, text):
+    if os.getenv("UNIFAI_TELEGRAM_TEST_MODE", "0") == "1":
+        return True
     try:
         telegram_api_call(token, "sendMessage", {"chat_id": str(chat_id), "text": text})
+        return True
     except Exception:
-        pass
+        return False
+
+
+def format_oracle_delivery_message(payload):
+    incident_type = payload.get("incident_type", "unknown")
+    severity = payload.get("severity", "low")
+    stage = payload.get("stage", "unknown")
+    source = payload.get("source", "Supervisor")
+    summary = payload.get("summary", "")
+    rationale = payload.get("rationale", "")
+    recommended_state = payload.get("recommended_supervisor_state", "observe")
+    execute_actions = bool(payload.get("execute_actions", False))
+    proposed_actions = payload.get("proposed_actions") or []
+    if isinstance(proposed_actions, str):
+        proposed_actions = [proposed_actions]
+    elif not isinstance(proposed_actions, (list, tuple)):
+        proposed_actions = [str(proposed_actions)]
+    task_id = payload.get("task_id")
+
+    lines = [
+        "[ORACLE INCIDENT]",
+        f"type={incident_type}",
+        f"severity={severity}",
+        f"stage={stage}",
+        f"source={source}",
+        f"task_id={task_id if task_id is not None else 'n/a'}",
+        f"recommended_state={recommended_state}",
+        f"execute_actions={str(execute_actions).lower()}",
+    ]
+    if proposed_actions:
+        lines.append(f"proposed_actions={','.join(str(action) for action in proposed_actions)}")
+    if summary:
+        lines.append(f"summary={summary}")
+    if rationale:
+        lines.append(f"rationale={rationale}")
+    return "\n".join(lines)[:3500]
+
+
+def deliver_oracle_payload(payload_json, chat_id_override=None):
+    try:
+        payload = json.loads(payload_json)
+        if not isinstance(payload, dict):
+            raise ValueError("payload is not an object")
+    except Exception as exc:
+        return False, f"Invalid oracle payload: {exc}"
+
+    authorized_chat_id = os.getenv("AUTHORIZED_CHAT_ID", "").strip()
+    target_chat_id = str(chat_id_override or authorized_chat_id).strip()
+    if not target_chat_id:
+        return False, "Missing target chat id. Set AUTHORIZED_CHAT_ID or provide --deliver-oracle-chat-id."
+
+    if authorized_chat_id and target_chat_id != authorized_chat_id:
+        return False, "Target chat id does not match AUTHORIZED_CHAT_ID."
+
+    token = resolve_telegram_token()
+    if not token:
+        return False, "Telegram token unavailable."
+
+    message = format_oracle_delivery_message(payload)
+    log_audit("ORACLE_DELIVERY_ATTEMPT", target_chat_id, payload.get("incident_type", "unknown"))
+    sent = send_telegram_message(token, target_chat_id, message)
+    if not sent:
+        log_audit("ORACLE_DELIVERY_FAILED", target_chat_id, payload.get("incident_type", "unknown"))
+        return False, "Telegram send failed."
+
+    log_audit("ORACLE_DELIVERY_SENT", target_chat_id, payload.get("incident_type", "unknown"))
+    return True, "Oracle delivery sent."
 
 
 def run_polling_loop():
@@ -353,7 +422,14 @@ def main():
     parser = argparse.ArgumentParser(description="UnifAI Telegram C2 bridge")
     parser.add_argument("--local-chat-id", type=str, help="Run one local command as this chat id")
     parser.add_argument("--local-command", type=str, help="Run one local command and exit")
+    parser.add_argument("--deliver-oracle-json", type=str, help="Deliver an Oracle JSON payload to Telegram")
+    parser.add_argument("--deliver-oracle-chat-id", type=str, help="Override destination chat id for Oracle delivery")
     args = parser.parse_args()
+
+    if args.deliver_oracle_json is not None:
+        ok, details = deliver_oracle_payload(args.deliver_oracle_json, args.deliver_oracle_chat_id)
+        print(json.dumps({"ok": ok, "details": details}, ensure_ascii=False))
+        raise SystemExit(0 if ok else 1)
 
     if args.local_chat_id is not None and args.local_command is not None:
         run_local_command(args.local_chat_id, args.local_command)
