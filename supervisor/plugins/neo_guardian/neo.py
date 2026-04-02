@@ -19,6 +19,27 @@ class NeoGuardian:
             re.compile(r"(?i)print\s*the\s*secret"),
             re.compile(r"(?i)show\s*me\s*the\s*api\s*key")
         ]
+        self.output_threat_signatures = [
+            "ignore all previous",
+            "ignore as instruções",
+            "system prompt",
+            "forget",
+            "bypass",
+        ]
+
+    def sanitize_tool_output(self, tool_name: str, output: str) -> str:
+        """
+        Sanitizes tool output before it is returned to the model loop.
+        """
+        if tool_name != "read_file":
+            return output
+
+        lowered_output = output.lower()
+        for signature in self.output_threat_signatures:
+            if signature in lowered_output:
+                return "[NEO GUARDIAN INTERVENTION: File content masked due to detected Prompt Injection signature.]"
+
+        return output
 
     def analyze_task_spec(self, task_spec: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -313,6 +313,8 @@ def main():
                 cmd = spec.get("cmd")
                 args = spec.get("args", [])
                 out = run_allowlisted(cmd, args)
+                if neo:
+                    out["stdout"] = neo.sanitize_tool_output(cmd, str(out.get("stdout", "")))
                 conn.execute(
                     "UPDATE tasks SET tool_calls=tool_calls+1, status='done', result=? WHERE id=?",
                     (json.dumps(out, ensure_ascii=False), task_id),
