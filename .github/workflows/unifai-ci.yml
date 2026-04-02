@@ -88,6 +88,9 @@ jobs:
       - name: Run Session Leakage Smoke Test
         run: bash ./scripts/smoke_test_session_leakage.sh
 
+      - name: Run Fuse Kill Smoke Test
+        run: python scripts/smoke_test_fuse_kill.py
+
       - name: Integrity Verified - Telegram Alert
         if: success()
         run: |

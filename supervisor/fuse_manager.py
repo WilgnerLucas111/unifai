@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -18,7 +19,14 @@ class KillSwitchRegistry:
         self._lock = threading.Lock()
         self._entries: Dict[str, Dict[str, Any]] = {}
 
-    def register_process(self, task_id: str, pid: int, pgid: Optional[int] = None, status: str = "running") -> Dict[str, Any]:
+    def register_process(
+        self,
+        task_id: str,
+        pid: int,
+        pgid: Optional[int] = None,
+        status: str = "running",
+        popen_proc: Optional[subprocess.Popen] = None,
+    ) -> Dict[str, Any]:
         if pgid is None:
             pgid = os.getpgid(pid)
 
@@ -27,6 +35,7 @@ class KillSwitchRegistry:
             "pid": int(pid),
             "pgid": int(pgid),
             "status": status,
+            "popen_proc": popen_proc,
             "reason": None,
             "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
@@ -59,8 +68,9 @@ class KillSwitchRegistry:
 class FuseManager:
     """Kills compromised agent process groups immediately on demand."""
 
-    def __init__(self, registry: KillSwitchRegistry) -> None:
+    def __init__(self, registry: KillSwitchRegistry, audit_writer=None) -> None:
         self.registry = registry
+        self.audit_writer = audit_writer
 
     def trip_agent(self, task_id: str, reason: str, grace_seconds: int = 2) -> Dict[str, Any]:
         entry = self.registry.get(task_id)
@@ -72,6 +82,20 @@ class FuseManager:
                 "reason": reason,
             }
 
+        popen_proc = entry.get("popen_proc")
+        if popen_proc is not None and popen_proc.poll() is not None:
+            self.registry.update_status(task_id, "already_dead", reason=reason)
+            self._audit(f"[AUDIT] TASK_ALREADY_DEAD - Task_ID: {task_id}, Reason: {reason}")
+            updated = self.registry.get(task_id) or {"task_id": str(task_id)}
+            updated.update(
+                {
+                    "ok": True,
+                    "status": "already_dead",
+                    "returncode": popen_proc.poll(),
+                }
+            )
+            return updated
+
         pgid = entry.get("pgid")
         if pgid is None:
             self.registry.update_status(task_id, "kill_error", reason="missing process group id")
@@ -80,6 +104,8 @@ class FuseManager:
             return updated
 
         self.registry.update_status(task_id, "tripping", reason=reason)
+
+        grant_revoke_result = self._revoke_grants(task_id=task_id, reason=reason)
 
         term_sent = False
         kill_sent = False
@@ -127,10 +153,48 @@ class FuseManager:
                 "term_sent": term_sent,
                 "kill_sent": kill_sent,
                 "status": final_status,
+                "grant_revoke_result": grant_revoke_result,
                 "errors": errors,
             }
         )
+
+        if final_status == "killed":
+            self._audit(f"[AUDIT] TASK_KILLED - Task_ID: {task_id}, Reason: {reason}")
+
         return updated
+
+    def _revoke_grants(self, task_id: str, reason: str) -> Dict[str, Any]:
+        if os.getenv("UNIFAI_FUSE_SKIP_GRANT_REVOCATION", "0") == "1":
+            return {"ok": True, "mode": "skipped"}
+
+        cli_path = os.getenv("UNIFAI_SECRETVAULT_CLI", "/opt/little7/supervisor/supervisor-secretvault/src/cli.js")
+        if not os.path.isfile(cli_path):
+            return {"ok": False, "mode": "missing_cli", "path": cli_path}
+
+        node_bin = os.getenv("NODE_BIN", "node")
+        try:
+            result = subprocess.run(
+                [node_bin, cli_path, "cleanup"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except Exception as exc:
+            return {"ok": False, "mode": "exception", "error": str(exc)}
+
+        return {
+            "ok": result.returncode == 0,
+            "mode": "cleanup",
+            "returncode": result.returncode,
+            "task_id": str(task_id),
+            "reason": reason,
+        }
+
+    def _audit(self, message: str) -> None:
+        if callable(self.audit_writer):
+            self.audit_writer(message)
+            return
+        print(message)
 
     def _is_process_group_alive(self, pgid: int) -> bool:
         try:

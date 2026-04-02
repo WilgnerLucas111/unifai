@@ -130,10 +130,20 @@ def run_allowlisted(
             pid=process.pid,
             pgid=os.getpgid(process.pid),
             status="running",
+            popen_proc=process,
         )
 
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
+
+        if kill_registry and tracked_task_id is not None:
+            tracked = kill_registry.get(tracked_task_id)
+            if tracked and tracked.get("status") in {"killed", "already_dead", "tripping"}:
+                raise RuntimeError(f"task {tracked_task_id} killed by fuse manager")
+
+        if process.returncode in (-signal.SIGTERM, -signal.SIGKILL):
+            raise RuntimeError(f"task {tracked_task_id or 'unknown'} killed by signal")
+
     except subprocess.TimeoutExpired as timeout_error:
         timeout_reason = f"tool call timeout after {timeout_seconds}s"
         if fuse_manager and tracked_task_id is not None:
@@ -328,11 +338,12 @@ class SupervisorRuntime:
         self.session_vault = session_vault if session_vault is not None else SessionVault()
         self.system_injector = system_injector if system_injector is not None else SystemInjector()
         self.kill_registry = kill_registry if kill_registry is not None else KillSwitchRegistry()
-        self.fuse = fuse_manager if fuse_manager is not None else FuseManager(self.kill_registry)
+        self.fuse_manager = fuse_manager if fuse_manager is not None else FuseManager(self.kill_registry, audit_writer=log)
+        self.fuse = self.fuse_manager
 
     def trip_agent(self, task_id: int | str, reason: str, grace_seconds: int = 2) -> dict:
         """Expose process kill path for Neo-triggered immediate containment."""
-        return self.fuse.trip_agent(str(task_id), reason=reason, grace_seconds=grace_seconds)
+        return self.fuse_manager.trip_agent(str(task_id), reason=reason, grace_seconds=grace_seconds)
 
     def prepare_task_spec(self, spec: dict) -> dict:
         """Mount dynamic physics and specs context into a task specification."""
@@ -433,7 +444,7 @@ def main():
                     args,
                     task_id=str(task_id),
                     kill_registry=runtime.kill_registry,
-                    fuse_manager=runtime.fuse,
+                    fuse_manager=runtime.fuse_manager,
                 )
                 if runtime.neo:
                     out["stdout"] = runtime.neo.sanitize_tool_output(cmd, str(out.get("stdout", "")))

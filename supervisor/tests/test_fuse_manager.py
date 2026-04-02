@@ -3,8 +3,8 @@ import os
 import signal
 import subprocess
 import sys
-import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -46,6 +46,59 @@ class FuseManagerTests(unittest.TestCase):
         result = fuse.trip_agent("missing-task", reason="manual")
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "not_found")
+
+    def test_trip_agent_returns_already_dead_when_process_exited(self):
+        class DeadProcess:
+            def poll(self):
+                return 0
+
+        registry = KillSwitchRegistry()
+        registry.register_process("task-dead", pid=os.getpid(), pgid=os.getpgrp(), popen_proc=DeadProcess())
+        fuse = FuseManager(registry)
+
+        result = fuse.trip_agent("task-dead", reason="race-check")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "already_dead")
+
+        entry = registry.get("task-dead")
+        assert entry is not None
+        self.assertEqual(entry["status"], "already_dead")
+
+    def test_trip_agent_revokes_grants_before_sigterm(self):
+        class AliveProcess:
+            def poll(self):
+                return None
+
+        class RecordingFuse(FuseManager):
+            def __init__(self, registry):
+                super().__init__(registry)
+                self.events = []
+
+            def _revoke_grants(self, task_id: str, reason: str):
+                self.events.append("revoke")
+                return {"ok": True, "mode": "test"}
+
+            def _is_process_group_alive(self, pgid: int) -> bool:
+                return False
+
+            def _audit(self, message: str) -> None:
+                self.events.append(f"audit:{message}")
+
+        registry = KillSwitchRegistry()
+        registry.register_process("task-order", pid=99991, pgid=99992, popen_proc=AliveProcess())
+        fuse = RecordingFuse(registry)
+
+        with mock.patch.object(fuse_module.os, "killpg") as killpg_mock:
+            def _record_killpg(pgid, sig):
+                fuse.events.append(f"kill:{int(sig)}")
+
+            killpg_mock.side_effect = _record_killpg
+            result = fuse.trip_agent("task-order", reason="order-check", grace_seconds=0)
+
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(len(fuse.events), 2)
+        self.assertEqual(fuse.events[0], "revoke")
+        self.assertTrue(fuse.events[1].startswith("kill:"))
 
     def test_trip_agent_kills_process_group(self):
         registry = KillSwitchRegistry()
