@@ -85,6 +85,9 @@ jobs:
           ./scripts/smoke_test_wash_and_sleep.sh
           sleep 2 && pkill -f "openclaw-gateway" || true
 
+      - name: Run Session Leakage Smoke Test
+        run: bash ./scripts/smoke_test_session_leakage.sh
+
       - name: Integrity Verified - Telegram Alert
         if: success()
         run: |

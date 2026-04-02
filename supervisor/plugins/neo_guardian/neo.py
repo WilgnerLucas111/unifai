@@ -3,10 +3,12 @@ Neo (System Guardian) Plugin for UnifAI Supervisor.
 This module enforces Rules 0 and 4 of the Lyra-Little7 Constitution.
 """
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from plugins.neo_guardian.mcp_interceptor import MCPInterceptor, GovernanceDecision
 
 class NeoGuardian:
-    def __init__(self):
+    def __init__(self, interceptor: Optional[MCPInterceptor] = None):
+        self.interceptor = interceptor
         # Prompt Injection Heuristics
         self.injection_patterns = [
             re.compile(r"(?i)ignore\s*all\s*previous\s*instructions"),
@@ -17,6 +19,27 @@ class NeoGuardian:
             re.compile(r"(?i)print\s*the\s*secret"),
             re.compile(r"(?i)show\s*me\s*the\s*api\s*key")
         ]
+        self.output_threat_signatures = [
+            "ignore all previous",
+            "ignore as instruções",
+            "system prompt",
+            "forget",
+            "bypass",
+        ]
+
+    def sanitize_tool_output(self, tool_name: str, output: str) -> str:
+        """
+        Sanitizes tool output before it is returned to the model loop.
+        """
+        if tool_name != "read_file":
+            return output
+
+        lowered_output = output.lower()
+        for signature in self.output_threat_signatures:
+            if signature in lowered_output:
+                return "[NEO GUARDIAN INTERVENTION: File content masked due to detected Prompt Injection signature.]"
+
+        return output
 
     def analyze_task_spec(self, task_spec: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -51,6 +74,27 @@ class NeoGuardian:
                 report["recommended_action"] = "block_task"
                 report["reason"] = f"PROMPT_INJECTION_DETECTED: Malicious pattern found '{pattern.pattern}'"
                 return report
+
+        # 2. Check MCP Tool Manifest Limits (Governable Architecture)
+        if self.interceptor and "tool_use" in task_spec:
+            tool_intent = task_spec["tool_use"]
+            tool_name = tool_intent.get("name")
+            tool_args = tool_intent.get("arguments", {})
+
+            if tool_name:
+                decision, reason = self.interceptor.inspect_call(tool_name, tool_args)
+
+                if decision == GovernanceDecision.REJECT:
+                    report["is_safe"] = False
+                    report["recommended_action"] = "block_task"
+                    report["reason"] = f"CRITICAL_SECURITY_VIOLATION: {reason}"
+                    return report
+
+                if decision == GovernanceDecision.PENDING_APPROVAL:
+                    report["is_safe"] = False
+                    report["recommended_action"] = "pause_for_human"
+                    report["reason"] = f"RULE_0_ENFORCEMENT: {reason}"
+                    return report
 
         return report
 

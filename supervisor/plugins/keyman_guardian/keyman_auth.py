@@ -6,6 +6,9 @@ Denials from Keyman are routed to Neo as security signals for active auditing.
 """
 from typing import Dict, Any
 import uuid
+import json
+import os
+from pathlib import Path
 
 class MockNeo:
     """
@@ -28,13 +31,15 @@ class KeymanGuardian:
         self.capability_to_secret = {
             "web_search": "GOOGLE_API_KEY",
             "repo_access": "GITHUB_TOKEN",
-            "database_rw": "DATABASE_URL"
+            "database_rw": "DATABASE_URL",
+            "codex-oauth": "ANTHROPIC_API_KEY"
         }
         
         # RBAC mock - now checking CAPABILITIES, not raw secrets
         self.role_permissions = {
             "research_agent": ["web_search"],
             "github_agent": ["repo_access"],
+            "admin_agent": ["codex-oauth"],
         }
 
     def evaluate_capability_request(self, requester_role: str, requested_capability: str) -> Dict[str, Any]:
@@ -89,10 +94,19 @@ class MockSupervisor:
         if authz_report["recommended_action"] == "issue_grant":
             grant_id = str(uuid.uuid4())
             secret_key = authz_report["mapped_secret"]
-            raw_secret = self.vault.get(secret_key)
+            raw_secret = self.vault.get(secret_key, "MOCK_SECRET_KEY_FOR_TEST")
             
-            # Simulated ephemeral file/handle creation
-            grant_path = f"/tmp/grants/{grant_id}.secret"
+            # Simulated ephemeral file/handle creation adhering to KEYMAN_CONTRACT
+            Path("/tmp/grants/").mkdir(parents=True, exist_ok=True)
+            grant_path = f"/tmp/grants/{grant_id}.json"
+            
+            with open(grant_path, "w") as f:
+                json.dump({
+                    "secret_alias": req_cap,
+                    "token": raw_secret,
+                    "ttl": 30
+                }, f)
+            
             self.active_grants[grant_id] = {"secret": raw_secret, "ttl": 30} # 30 seconds TTL
             
             print(f"[SUPERVISOR] -> Action: APPROVED. Issued Temporal Grant ID {grant_id} (Alias for {req_cap}).\n")

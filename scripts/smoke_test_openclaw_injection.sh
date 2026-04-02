@@ -28,7 +28,7 @@ chmod 700 "$SECRETVAULT_ROOT/secrets" "$SECRETVAULT_ROOT/grants"
 cat > "$SECRETVAULT_ROOT/config/default.json" <<CFG
 {
   "vault": { "defaultTtlSeconds": 60, "maxTtlSeconds": 3600, "interactiveFallback": false },
-  "keyman": { "command": "python3 $REPO_ROOT/supervisor/plugins/keyman_guardian/keyman_auth_cli.py" }
+  "keyman": { "command": "$REPO_ROOT/supervisor/plugins/keyman_guardian/keyman_auth_cli.py" }
 }
 CFG
 

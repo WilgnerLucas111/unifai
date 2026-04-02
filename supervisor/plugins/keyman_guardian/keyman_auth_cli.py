@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Keyman AuthZ v2 - Formally Implements JSON Contract with SecretVault
 
@@ -40,7 +41,7 @@ class KeymanGuardian:
         self.role_permissions = {
             "research_agent": ["web_search", "repo_access"],
             "github_agent": ["repo_access"],
-            "admin_agent": ["web_search", "repo_access", "database_rw"],
+            "admin_agent": ["web_search", "repo_access", "database_rw", "codex-oauth"],
         }
         
         # Ultra-sensitive operations (probing guard)
@@ -54,8 +55,8 @@ class KeymanGuardian:
         """
         Core authorization logic. Maps request to response following the JSON Contract.
         """
-        requester = request.get("requester", "unknown")
-        secret_alias = request.get("secret_alias", "unknown")
+        requester = request.get("agent", "unknown")
+        secret_alias = request.get("alias", "unknown")
         ttl_requested = request.get("ttl_seconds", 300)
         request_id = request.get("request_id")
         
@@ -78,7 +79,7 @@ class KeymanGuardian:
                 reason = f"THREAT_DETECTED: {requester} attempted unauthorized high-risk access to {secret_alias}"
             
             return {
-                "is_authorized": False,
+                "approved": False,
                 "decision": decision,
                 "reason": reason,
                 "ttl_seconds": 0,
@@ -89,7 +90,7 @@ class KeymanGuardian:
         # Ensure minimum 1 second, maximum 3600 seconds (1 hour)
         approved_ttl = max(1, min(ttl_requested, 3600))
         return {
-            "is_authorized": True,
+            "approved": True,
             "decision": "issue_grant",
             "reason": f"Authorized: {requester} can access {secret_alias}",
             "ttl_seconds": approved_ttl,
@@ -113,7 +114,7 @@ class KeymanCLI:
             return json.dumps(response)
         except json.JSONDecodeError as e:
             return json.dumps({
-                "is_authorized": False,
+                "approved": False,
                 "decision": "block_task",
                 "reason": f"Malformed request JSON: {str(e)}",
                 "ttl_seconds": 0,
@@ -121,7 +122,7 @@ class KeymanCLI:
             })
         except Exception as e:
             return json.dumps({
-                "is_authorized": False,
+                "approved": False,
                 "decision": "block_task",
                 "reason": f"Keyman error: {str(e)}",
                 "ttl_seconds": 0,
