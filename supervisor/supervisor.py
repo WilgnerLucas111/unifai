@@ -28,6 +28,11 @@ try:
 except ImportError:
     from plugins.keyman_guardian.session_vault import SessionVault
 
+try:
+    from supervisor.plugins.neo_guardian.prompt_injector import SystemInjector
+except ImportError:
+    from plugins.neo_guardian.prompt_injector import SystemInjector
+
 BUILD_ID = "dev-20260305-1427"
 DB = os.path.expanduser("~/supervisor/data/supervisor.db")
 LOG = os.path.expanduser("~/supervisor/logs/supervisor.log")
@@ -258,9 +263,25 @@ def interpret_and_record_incident(conn, task_id: int | None, spec: dict, stage: 
 class SupervisorRuntime:
     """Runtime holder for guarded persistence and plugin wiring."""
 
-    def __init__(self, neo_guardian=None, session_vault=None):
+    def __init__(self, neo_guardian=None, session_vault=None, system_injector=None):
         self.neo = neo_guardian
         self.session_vault = session_vault if session_vault is not None else SessionVault()
+        self.system_injector = system_injector if system_injector is not None else SystemInjector()
+
+    def prepare_task_spec(self, spec: dict) -> dict:
+        """Mount dynamic physics and specs context into a task specification."""
+        prepared_spec = dict(spec) if isinstance(spec, dict) else {}
+        physics_context = self.system_injector.get_physics_context()
+        base_prompt = str(prepared_spec.get("prompt", "")).strip()
+        injected_prompt = self.system_injector.inject_specs_ledger(base_prompt)
+
+        prepared_spec["system_physics"] = physics_context
+        if injected_prompt:
+            prepared_spec["prompt"] = f"{physics_context}\n\n{injected_prompt}"
+        else:
+            prepared_spec["prompt"] = physics_context
+
+        return prepared_spec
 
     def persist_session_state(self, conn: sqlite3.Connection, task_id: int, session_data: dict) -> dict:
         session_path = self.session_vault.save_session(str(task_id), session_data)
@@ -301,22 +322,23 @@ def main():
 
         task_id = row["id"]
         spec = json.loads(row["spec"])
+        mounted_spec = runtime.prepare_task_spec(spec)
         
         # === INÍCIO: INTEGRAÇÃO NEO GUARDIAN (RULE 4) ===
         if runtime.neo:
-            neo_eval = runtime.neo.analyze_task_spec(spec)
+            neo_eval = runtime.neo.analyze_task_spec(mounted_spec)
             if not neo_eval["is_safe"]:
                 # Neo recommends blocking; Oracle only interprets the incident for audit.
                 error_msg = f"BLOCKED_BY_NEO: {neo_eval['reason']}"
                 interpret_and_record_incident(
                     conn,
                     task_id,
-                    spec,
+                    mounted_spec,
                     "pre_execution",
                     error=error_msg,
                     neo_eval=neo_eval,
                     metadata={
-                        "restart_count": extract_restart_count(spec),
+                        "restart_count": extract_restart_count(mounted_spec),
                     },
                 )
                 log(f"task {task_id} {error_msg}")
@@ -334,12 +356,12 @@ def main():
 
         try:
             # Minimal task spec: {"type":"tool","cmd":"date","args":[]}
-            ttype = spec.get("type")
+            ttype = mounted_spec.get("type")
             if ttype == "tool":
                 if row["tool_calls"] >= MAX_TOOL_CALLS_PER_TASK:
                     raise RuntimeError("tool call limit exceeded")
-                cmd = spec.get("cmd")
-                args = spec.get("args", [])
+                cmd = mounted_spec.get("cmd")
+                args = mounted_spec.get("args", [])
                 out = run_allowlisted(cmd, args)
                 if runtime.neo:
                     out["stdout"] = runtime.neo.sanitize_tool_output(cmd, str(out.get("stdout", "")))
@@ -364,11 +386,11 @@ def main():
             interpret_and_record_incident(
                 conn,
                 task_id,
-                spec,
+                mounted_spec,
                 "execution",
                 error=str(e),
                 metadata={
-                    "restart_count": extract_restart_count(spec),
+                    "restart_count": extract_restart_count(mounted_spec),
                 },
             )
             conn.execute(
