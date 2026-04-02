@@ -75,6 +75,30 @@ def resolve_proxy_port():
 
 PROXY_PORT = resolve_proxy_port()
 
+
+class BillGuardian:
+    """Heuristic budget gate for estimating payload size before API calls."""
+
+    MAX_ESTIMATED_TOKENS = 10000
+
+    def estimate_tokens(self, text: str) -> int:
+        return len(text) // 4 + 1
+
+    def evaluate_budget(self, alias: str, payload_text: str) -> dict:
+        estimated = self.estimate_tokens(payload_text)
+        if estimated > self.MAX_ESTIMATED_TOKENS:
+            return {
+                "gate_open": False,
+                "reason": (
+                    f"BUDGET_EXCEEDED: Estimated tokens ({estimated}) exceed the maximum allowed "
+                    f"({self.MAX_ESTIMATED_TOKENS})."
+                ),
+            }
+        return {"gate_open": True, "estimated_tokens": estimated}
+
+
+BILL_GUARDIAN = BillGuardian()
+
 def get_budget():
     state = get_state()
     return int(state.get("budget", 0))
@@ -157,6 +181,18 @@ class BillProxyHandler(BaseHTTPRequestHandler):
         safe_post_data = post_data.decode('utf-8', errors='replace')
         logger.info(f"REQUEST INBOUND: {safe_post_data}")
         logger.info("REQUEST SECRETS: [REDACTED]")
+
+        alias = self.headers.get("x-unifai-alias", "anthropic-api")
+        budget_eval = BILL_GUARDIAN.evaluate_budget(alias, safe_post_data)
+        if not budget_eval["gate_open"]:
+            logger.warning(budget_eval["reason"])
+            send_json(self, 429, {
+                "error": {
+                    "type": "rate_limit_error",
+                    "message": budget_eval["reason"],
+                }
+            })
+            return
 
         if key_status == KEY_STATUS_INVALID:
             logger.warning("KEY PAUSED: Stored key status is INVALID. Returning 503 until rotation.")
@@ -259,7 +295,23 @@ class BillProxyHandler(BaseHTTPRequestHandler):
         # Shut down default stdout chatter
         pass
 
-if __name__ == "__main__":
+def run_self_test() -> None:
+    guardian = BillGuardian()
+
+    small_text = "Budget check"
+    small_result = guardian.evaluate_budget("smoke-alias", small_text)
+    if not small_result.get("gate_open"):
+        raise SystemExit("[FATAL] BillGuardian self-test failed on small payload.")
+
+    large_text = "A" * 50000
+    large_result = guardian.evaluate_budget("smoke-alias", large_text)
+    if large_result.get("gate_open"):
+        raise SystemExit("[FATAL] BillGuardian self-test failed to block oversized payload.")
+
+    print("[PASS] BillGuardian self-test passed for small and oversized payloads.")
+
+
+def main() -> None:
     logger.info(f"Starting unseen UnifAI Bill Proxy on port {PROXY_PORT}...")
     state = get_state()
     state["budget"] = int(state.get("budget", DEFAULT_BUDGET))
@@ -271,3 +323,8 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down Bill Proxy.")
+
+
+if __name__ == "__main__":
+    run_self_test()
+    main()
