@@ -75,6 +75,7 @@ class FuseManager:
     def trip_agent(self, task_id: str, reason: str, grace_seconds: int = 2) -> Dict[str, Any]:
         entry = self.registry.get(task_id)
         if entry is None:
+            self._audit(f"[AUDIT] TASK_NOT_FOUND - Task_ID: {task_id}, Reason: {reason}")
             return {
                 "ok": False,
                 "task_id": str(task_id),
