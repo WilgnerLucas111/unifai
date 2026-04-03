@@ -3,14 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 
+UNCLEAR_STATUS = "unclear"
+AGILE_STATUS = "agile"
+CURRENT_STATUS = "current"
+CLEARED_STATUS = "cleared"
+
+
 ALLOWED_TASK_STATUSES = {
-    "pending",
-    "in_progress",
-    "done",
-    "blocked",
-    "failed",
-    "cancelled",
+    UNCLEAR_STATUS,
+    AGILE_STATUS,
+    CURRENT_STATUS,
+    CLEARED_STATUS,
 }
+
+
+class StateTransitionError(ValueError):
+    pass
 
 
 def _normalize_text(value: str, field_name: str) -> str:
@@ -24,9 +32,10 @@ def _normalize_text(value: str, field_name: str) -> str:
     return normalized
 
 
-def _normalize_lines(values: list[str], field_name: str) -> list[str]:
+def _normalize_lines(values: list[str] | tuple[str, ...], field_name: str) -> tuple[str, ...]:
     if not isinstance(values, list):
-        raise TypeError(f"{field_name} must be a list of strings")
+        if not isinstance(values, tuple):
+            raise TypeError(f"{field_name} must be a list/tuple of strings")
 
     normalized: list[str] = []
     for index, value in enumerate(values):
@@ -37,16 +46,16 @@ def _normalize_lines(values: list[str], field_name: str) -> list[str]:
             raise ValueError(f"{field_name}[{index}] must not be empty")
         normalized.append(line)
 
-    return normalized
+    return tuple(normalized)
 
 
 @dataclass(frozen=True)
 class TaskSpec:
     task_id: str
     description: str
-    constraints: list[str]
-    acceptance_criteria: list[str]
-    status: str = "pending"
+    constraints: tuple[str, ...]
+    acceptance_criteria: tuple[str, ...]
+    status: str = UNCLEAR_STATUS
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _normalize_text(self.task_id, "task_id"))
@@ -66,34 +75,89 @@ class TaskSpec:
 
 @dataclass
 class SpecsLedger:
-    _tasks: dict[str, TaskSpec] = field(default_factory=dict, init=False, repr=False)
+    _unclear_ledger: dict[str, TaskSpec] = field(default_factory=dict, init=False, repr=False)
+    _agile_ledger: dict[str, TaskSpec] = field(default_factory=dict, init=False, repr=False)
+    _current_ledger: dict[str, TaskSpec] = field(default_factory=dict, init=False, repr=False)
+    _cleared_ledger: dict[str, TaskSpec] = field(default_factory=dict, init=False, repr=False)
 
-    def add_task(self, spec: TaskSpec) -> None:
+    @property
+    def unclear_ledger(self) -> tuple[TaskSpec, ...]:
+        return tuple(self._copy_spec(spec) for spec in self._unclear_ledger.values())
+
+    @property
+    def agile_ledger(self) -> tuple[TaskSpec, ...]:
+        return tuple(self._copy_spec(spec) for spec in self._agile_ledger.values())
+
+    @property
+    def current_ledger(self) -> tuple[TaskSpec, ...]:
+        return tuple(self._copy_spec(spec) for spec in self._current_ledger.values())
+
+    @property
+    def cleared_ledger(self) -> tuple[TaskSpec, ...]:
+        return tuple(self._copy_spec(spec) for spec in self._cleared_ledger.values())
+
+    def add_unclear(self, spec: TaskSpec) -> None:
         if not isinstance(spec, TaskSpec):
             raise TypeError("spec must be a TaskSpec")
-        if spec.task_id in self._tasks:
+        if self._has_task(spec.task_id):
             raise ValueError(f"task_id already exists: {spec.task_id}")
-        self._tasks[spec.task_id] = self._copy_spec(spec)
 
-    def get_pending_tasks(self) -> list[TaskSpec]:
-        pending_specs = [spec for spec in self._tasks.values() if spec.status == "pending"]
-        return [self._copy_spec(spec) for spec in pending_specs]
+        unclear_spec = replace(spec, status=UNCLEAR_STATUS)
+        self._unclear_ledger[unclear_spec.task_id] = self._copy_spec(unclear_spec)
 
-    def mark_task_status(self, task_id: str, new_status: str) -> None:
+    def promote_to_agile(self, task_id: str) -> None:
         normalized_task_id = _normalize_text(task_id, "task_id")
-        normalized_status = _normalize_text(new_status, "new_status")
-        if normalized_status not in ALLOWED_TASK_STATUSES:
-            raise ValueError(f"new_status must be one of {sorted(ALLOWED_TASK_STATUSES)}")
+        spec = self._unclear_ledger.pop(normalized_task_id, None)
+        if spec is None:
+            raise StateTransitionError(
+                f"task_id '{normalized_task_id}' cannot be promoted to agile because it is not in unclear_ledger"
+            )
 
-        current_spec = self._tasks.get(normalized_task_id)
-        if current_spec is None:
-            raise KeyError(f"unknown task_id: {normalized_task_id}")
+        self._agile_ledger[normalized_task_id] = replace(spec, status=AGILE_STATUS)
 
-        self._tasks[normalized_task_id] = replace(current_spec, status=normalized_status)
+    def move_to_current(self, task_id: str) -> None:
+        normalized_task_id = _normalize_text(task_id, "task_id")
+        if self._current_ledger:
+            raise StateTransitionError("current_ledger already has an in-flight task")
+
+        spec = self._agile_ledger.pop(normalized_task_id, None)
+        if spec is None:
+            raise StateTransitionError(
+                f"task_id '{normalized_task_id}' cannot move to current because it is not in agile_ledger"
+            )
+
+        self._current_ledger[normalized_task_id] = replace(spec, status=CURRENT_STATUS)
+
+    def mark_as_cleared(self, task_id: str) -> None:
+        normalized_task_id = _normalize_text(task_id, "task_id")
+
+        current_spec = self._current_ledger.pop(normalized_task_id, None)
+        if current_spec is not None:
+            self._cleared_ledger[normalized_task_id] = replace(current_spec, status=CLEARED_STATUS)
+            return
+
+        agile_spec = self._agile_ledger.pop(normalized_task_id, None)
+        if agile_spec is not None:
+            self._cleared_ledger[normalized_task_id] = replace(agile_spec, status=CLEARED_STATUS)
+            return
+
+        if normalized_task_id in self._unclear_ledger:
+            raise StateTransitionError(
+                f"task_id '{normalized_task_id}' cannot be cleared because it is still in unclear_ledger"
+            )
+
+        if normalized_task_id in self._cleared_ledger:
+            raise StateTransitionError(
+                f"task_id '{normalized_task_id}' is already in cleared_ledger"
+            )
+
+        raise StateTransitionError(
+            f"task_id '{normalized_task_id}' cannot be cleared because it was never promoted"
+        )
 
     def get_task_prompt_context(self, task_id: str) -> str:
         normalized_task_id = _normalize_text(task_id, "task_id")
-        spec = self._tasks.get(normalized_task_id)
+        spec = self._find_task(normalized_task_id)
         if spec is None:
             raise KeyError(f"unknown task_id: {normalized_task_id}")
 
@@ -113,12 +177,27 @@ class SpecsLedger:
             ]
         )
 
+    def _has_task(self, task_id: str) -> bool:
+        return self._find_task(task_id) is not None
+
+    def _find_task(self, task_id: str) -> TaskSpec | None:
+        for ledger in (
+            self._unclear_ledger,
+            self._agile_ledger,
+            self._current_ledger,
+            self._cleared_ledger,
+        ):
+            spec = ledger.get(task_id)
+            if spec is not None:
+                return spec
+        return None
+
     @staticmethod
     def _copy_spec(spec: TaskSpec) -> TaskSpec:
         return TaskSpec(
             task_id=spec.task_id,
             description=spec.description,
-            constraints=list(spec.constraints),
-            acceptance_criteria=list(spec.acceptance_criteria),
+            constraints=tuple(spec.constraints),
+            acceptance_criteria=tuple(spec.acceptance_criteria),
             status=spec.status,
         )

@@ -100,6 +100,15 @@ jobs:
       - name: Run Neo Full Loop Smoke Test
         run: python scripts/smoke_test_neo_full_loop.py
 
+      - name: Run Bill Gate E2E Smoke Test
+        run: python scripts/smoke_test_bill_gate_e2e.py
+
+      - name: Run Bill Gate Truncated Stream Smoke Test
+        run: python scripts/smoke_test_bill_gate_truncated.py
+
+      - name: Run Gaia Orchestration Smoke Test
+        run: python scripts/smoke_test_gaia_orchestration.py
+
       - name: Integrity Verified - Telegram Alert
         if: success()
         run: |
