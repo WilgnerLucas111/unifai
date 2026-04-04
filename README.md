@@ -82,75 +82,87 @@ Supervisor enforces access boundaries, while secret handling remains a separate 
 
 ---
 
-# Rule 1 — Task Routing Authority
+# Rule 1 — Task Selection and Assignment
 
-All tasks must first be triaged by **Keyman**.
-
-```
-
-Agent request
-↓
-Supervisor
-↓
-Keyman (local LLM triage)
-↓
-easy / complex
+Task selection and execution assignment are split between **Oracle** and **Gaia**.
 
 ```
 
-Keyman only performs **task difficulty classification and routing**.
+Unclear Ledger + Cleared Ledger
+↓
+Oracle
+↓
+Agile Ledger (top 5 tasks)
+↓
+Gaia
+↓
+JohnDoe assignment
 
-The current bootstrap path wires Keyman through the SecretVault installer, which points the config at the installed wrapper path and preserves `request_id` for audit linking.
+```
+
+Oracle evaluates tasks using:
+- dependency
+- urgency
+- difficulty
+- human priority
+
+Gaia reads Agile Ledger and Current Task Ledger, then assigns execution to JohnDoe agents.
 
 ---
 
 # Rule 2 — Local Execution (JohnDoe)
 
-Simple tasks are executed by **JohnDoe**, a local LLM worker.
+**JohnDoe** is the default execution worker.
 
 Characteristics:
 
-- runs locally
+- runs locally by default
 - no secret access
-- no external API calls
+- no external API calls unless explicitly routed through governed paths
 
 Typical workload:
 
-- local reasoning
-- shell automation
-- data processing
-- routine system tasks
+- moving files
+- writing logs
+- writing already-complete text into artifacts
+- routine local execution tasks
 
-JohnDoe may be replaced as hardware evolves.
+Some JohnDoe agents may be assigned harder or more context-heavy work.
 
 ---
 
-# Rule 3 — External Oracle Invocation
+# Rule 3 — Oracle Reasoning Path
 
-Complex tasks require Advanced reasoning.
+**Oracle** is the advanced reasoning and task-selection layer.
+
+Oracle reads:
+
+- Unclear Ledger
+- Cleared Ledger
+
+Oracle uses advanced reasoning continuously in order to:
+
+- evaluate context-heavy work
+- divide and conquer larger tasks
+- select the top five tasks for Agile Ledger
+
+Selected JohnDoe agents may escalate harder work through:
 
 ```
 
-complex task
+JohnDoe
 ↓
-Oracle request
+Oracle
 ↓
-Supervisor selects reasoning provider
-↓
-reasoning provider execution
+Lyra
 
 ```
-
-Reasoning providers may include:
-
-- Lyra (Cloud-based Advanced LLM)
-- Local high-capability LLM
-- future reasoning providers such as another local machine running high-capability LLM
 
 Important constraints:
 
-- Oracle never sees API keys
-- Oracle only receives Supervisor-returned results
+- Oracle does not replace execution
+- Oracle provides reasoning support and task selection
+- Oracle never sees API keys directly
 
 ---
 
@@ -171,19 +183,14 @@ Examples:
 - attempts to modify Supervisor
 - memory manipulation
 
-Escalation path:
+Neo works through logs, traces, and ledger-visible evidence.
 
-```
+Neo is responsible for:
 
-Neo → Supervisor → Lyra consultation
-
-```
-
-Neo may recommend:
-
-- pausing agents
-- launching investigation
-- system degradation mode
+- auditing ledger changes
+- monitoring repeated anomalies
+- detecting unsafe or pathological execution patterns
+- reasoning from recorded system evidence
 
 ---
 
@@ -228,6 +235,7 @@ Bill responsibilities:
 - API call rate control
 - resource allocation across models
 - cost optimization
+- evaluating whether local world physics can support useful Local LLM execution
 
 Bill does **not hold API keys** and must remain separate from ad hoc agent behavior.
 
@@ -254,57 +262,60 @@ Agent → Supervisor → notify_human()
 
 ---
 
-# Rule 8 — Human Reporting (Mr. Wilson)
+# Rule 8 — Human-Facing Explainability (Wilson)
 
-**Wilson is the human reporting agent.**
-
-Role:
-
-Reporter / Summarizer / Communication broker
+**Wilson** is the human-facing interpretation and explainability layer.
 
 Responsibilities:
 
-- aggregate agent results
-- produce human-readable summaries
-- filter noise
+- receive commands from the Architect
+- write and maintain Unclear Ledger entries
+- improve explainability of logs and system state
+- help WebUI present system activity in human-readable form
 
 Wilson has:
 
 - no secret access
-- no API access
-- no direct communication ability
+- no execution authority
+- no direct communication ability outside governed paths
 
 Only the Supervisor sends messages.
 
 ---
 
-# Rule 9 — Spec & Question Ledger
+# Rule 9 — Operational Ledgers
 
-To prevent agents from guessing requirements, the system maintains two ledgers.
+The system uses four operational ledgers.
 
-### Specs Ledger
+### Cleared Ledger
 
-Stores confirmed specifications:
-
-- scope
-- constraints
-- acceptance criteria
-- version
+Approved tasks that are eligible for execution.
 
 ---
 
-### Questions Ledger
+### Unclear Ledger
 
-Unclear requirements are converted into structured questions.
+Ambiguous, risky, or insufficiently resolved tasks.
 
-```
+Unclear Ledger may be read and changed by:
+- Wilson
+- Neo
+- Oracle
+- Gaia
 
-question → Architect
-answer → Specs Ledger
+All ledger changes must be logged so Neo can audit them.
 
-```
+---
 
-Agents read **Specs Ledger only**.
+### Agile Ledger
+
+The top five tasks selected by Oracle for active execution planning.
+
+---
+
+### Current Task Ledger
+
+The live execution ledger maintained by Gaia, including assigned agents, timestamps, duration, token usage, and completion state.
 
 ---
 
@@ -322,6 +333,8 @@ A: engineering detail
 
 - task_id
 - agent
+- timestamps
+- duration
 - token usage
 - tool calls
 - stderr
@@ -337,6 +350,7 @@ Output:
 B only
 
 Human-focused summaries with noise removed.
+WebUI is currently view-only.
 
 ---
 
