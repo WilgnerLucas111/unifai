@@ -13,7 +13,7 @@ UnifAI is built on the **UnifAI Protocol** — a governance-first architecture w
 UnifAI explores a structured approach where agents operate inside hard mechanics and constitutional law, rather than inheriting authority from capability.
 
 
-The system was co-designed by Jouston Huang <jouston@linux.com> with assistance from Lyra, a cloud-based advanced LLM used for high-level reasoning.
+The system was co-designed by Jouston Huang <jouston@linux.com> with assistance from advanced LLM systems (cloud or local) used for high-level reasoning.
 
 ---
 
@@ -37,7 +37,7 @@ The goal is to prevent uncontrolled agent behavior and build systems that remain
 
 ---
 
-# Lyra–Little7 Constitution (v0.3)
+# UnifAI Constitution (v0.3)
 
 The UnifAI runtime follows a minimal governance framework with three explicit layers.
 
@@ -66,6 +66,41 @@ The Supervisor must remain:
 
 ---
 
+# Global Invariant — Logging Is Mandatory
+
+All agents MUST produce complete, structured, and traceable logs for every meaningful action.
+
+No action is considered valid unless it is logged.
+
+## Logging principles
+
+- Every state transition must be logged
+- Every decision must be attributable
+- Every escalation must be traceable
+- Every external interaction must be recorded
+- Logs must be immutable once written
+- Logs must be auditable by Neo
+- Logs must be consumable by Wilson (human interface)
+- Logs must be usable by Morpheus (memory consolidation)
+- Logs must be encrypted and make it auditable (Blackbox-like behavior)
+
+## Minimum required log fields
+
+- timestamp
+- agent_id
+- task_id
+- trace_id
+- action_type
+- input_summary
+- output_summary
+- decision_reason
+- token_usage (if applicable)
+- cost_estimate (if applicable)
+- escalation_flag
+- error_state (if any)
+
+---
+
 # Rule 0 — Secret Sovereignty
 
 Secrets never leave the **World Physics Secret Safe boundary**.
@@ -84,29 +119,31 @@ Supervisor enforces access boundaries, while secret handling remains a separate 
 
 # Rule 1 — Task Selection and Assignment
 
-Task selection and execution assignment are split between **Oracle** and **Gaia**.
+Task selection and execution assignment are handled through a governed ledger flow.
 
 ```
 
-Unclear Ledger + Cleared Ledger
+Wilson
+↓
+Uncleared Ledger
 ↓
 Oracle
 ↓
-Agile Ledger (top 5 tasks)
+Cleared + Agile Ledger
 ↓
 Gaia
 ↓
-JohnDoe assignment
+Current Task Ledger
+↓
+JohnDoe execution
+↓
+Morpheus dreaming
+↓
+lifecycle decision
+↓
+Supervisor final termination (if applicable)
 
 ```
-
-Oracle evaluates tasks using:
-- dependency
-- urgency
-- difficulty
-- human priority
-
-Gaia reads Agile Ledger and Current Task Ledger, then assigns execution to JohnDoe agents.
 
 ---
 
@@ -133,30 +170,22 @@ Some JohnDoe agents may be assigned harder or more context-heavy work.
 
 # Rule 3 — Oracle Reasoning Path
 
-**Oracle** is the advanced reasoning and task-selection layer.
+**Oracle** is the structuring intelligence layer.
 
 Oracle reads:
 
-- Unclear Ledger
+- Uncleared Ledger
 - Cleared Ledger
 
 Oracle uses advanced reasoning continuously in order to:
 
-- evaluate context-heavy work
-- divide and conquer larger tasks
-- select the top five tasks for Agile Ledger
+- transform Uncleared and Cleared into structured work
+- prepare Agile priorities
 
-Selected JohnDoe agents may escalate harder work through:
+Selected JohnDoe agents may request advanced reasoning through Oracle.
 
-```
-
-JohnDoe
-↓
-Oracle
-↓
-Lyra
-
-```
+Escalation proceeds through a governed path and may involve Keyman, Bill, and Supervisor before external reasoning is reached.
+Oracle receives the governed result and returns to orchestration.
 
 Important constraints:
 
@@ -168,29 +197,22 @@ Important constraints:
 
 # Rule 4 — System Guardian (Neo)
 
-**Neo monitors system integrity.**
-
-Signals monitored:
-
-1. abnormal task failure rate
-2. excessive token or API usage
-3. high-risk behaviors
-
-Examples:
-
-- prompt injection attempts
-- secret probing
-- attempts to modify Supervisor
-- memory manipulation
+**Neo is a parallel audit and anomaly detection layer.**
 
 Neo works through logs, traces, and ledger-visible evidence.
 
 Neo is responsible for:
 
-- auditing ledger changes
-- monitoring repeated anomalies
-- detecting unsafe or pathological execution patterns
-- reasoning from recorded system evidence
+- auditing logs and ledger mutations
+- detecting missing logs and broken trace chains
+- detecting abnormal persistence and loop/stalk patterns
+- emitting governed findings when anomalies appear
+
+Neo does not execute tasks.
+Neo does not dispatch workers.
+Neo does not directly terminate workers.
+Neo does not replace Gaia.
+Neo does not replace Supervisor.
 
 ---
 
@@ -205,12 +227,9 @@ Capabilities:
 - terminate runaway loops
 - no system restart required
 
-Triggers may come from:
+Supervisor performs final termination under governed triggers.
 
-- Architect (Human)
-- Neo
-- Lyra (advisory)
-- Supervisor policy
+Neo and Architect act as signal/advisory sources only.
 
 ---
 
@@ -233,7 +252,7 @@ Bill responsibilities:
 
 - token budget planning
 - API call rate control
-- resource allocation across models
+- budget, token, and compute resource gating across models and hardware
 - cost optimization
 - evaluating whether local world physics can support useful Local LLM execution
 
@@ -264,13 +283,13 @@ Agent → Supervisor → notify_human()
 
 # Rule 8 — Human-Facing Explainability (Wilson)
 
-**Wilson** is the human-facing interpretation and explainability layer.
+**Wilson** is the intake and human-facing interface layer.
 
 Responsibilities:
 
-- receive commands from the Architect
-- write and maintain Unclear Ledger entries
-- improve explainability of logs and system state
+- accept Architect input
+- write Uncleared Ledger entries
+- present human-readable state
 - help WebUI present system activity in human-readable form
 
 Wilson has:
@@ -293,11 +312,11 @@ Approved tasks that are eligible for execution.
 
 ---
 
-### Unclear Ledger
+### Uncleared Ledger
 
 Ambiguous, risky, or insufficiently resolved tasks.
 
-Unclear Ledger may be read and changed by:
+Uncleared Ledger may be read and changed by:
 - Wilson
 - Neo
 - Oracle
@@ -368,7 +387,7 @@ World Physics layer:
 Constitution layer
   |
 Docker World layer:
-  - Resident agents: Wilson, Keyman, Oracle, Lyra, Neo
+  - Resident agents: Wilson, Gaia, Keyman, Oracle, Neo, Morpheus
   - Ephemeral agents: JohnDoe
 ```
 

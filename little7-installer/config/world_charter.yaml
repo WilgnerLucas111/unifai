@@ -44,20 +44,46 @@ principles:
     name: "Deterministic Infrastructure"
     description: "Gaia, Bill, and Supervisor are system mechanisms, not autonomous reasoning agents."
   - id: "P003"
-    name: "Constrained Delegation"
-    description: "Keyman may dispatch work only through explicitly permitted channels."
+    name: "Secret Gatekeeping"
+    description: "Keyman validates legitimacy and scope of secret requests and does not route tasks."
   - id: "P004"
     name: "Anti-Forgery Oversight"
-    description: "Wilson is subject to periodic Neo audit due to high risk of mandate distortion."
+    description: "Neo audits logs, ledgers, and trace chains system-wide."
   - id: "P005"
     name: "Ephemeral Labor"
     description: "JohnDoe agents are temporary, task-scoped, and must be reclaimed after use."
   - id: "P006"
     name: "Auditability"
-    description: "All world-law changes, dispatches, deployments, completions, and reclamations must be logged."
+    description: "All meaningful actions, state transitions, decisions, escalations, and external interactions must be logged."
   - id: "P007"
     name: "Authority Separation"
     description: "Agent capability does not grant authority; authority is defined by world physics and constitution."
+
+logging_invariant:
+  statement: "All agents MUST produce complete, structured, and traceable logs for every meaningful action. No action is considered valid unless it is logged."
+  principles:
+    - "Every state transition must be logged."
+    - "Every decision must be attributable."
+    - "Every escalation must be traceable."
+    - "Every external interaction must be recorded."
+    - "Logs must be immutable once written."
+    - "Logs must be auditable by Neo."
+    - "Logs must be consumable by Wilson (human interface)."
+    - "Logs must be usable by Morpheus (memory consolidation)."
+    - "Logs must be encrypted and make it auditable (Blackbox-like behavior)."
+  minimum_required_fields:
+    - "timestamp"
+    - "agent_id"
+    - "task_id"
+    - "trace_id"
+    - "action_type"
+    - "input_summary"
+    - "output_summary"
+    - "decision_reason"
+    - "token_usage"
+    - "cost_estimate"
+    - "escalation_flag"
+    - "error_state"
 
 world_laws:
   resource_policy:
@@ -94,7 +120,7 @@ world_laws:
     layer: "world_physics"
     triggers:
       - "Architect"
-      - "Neo"
+      - "Neo anomaly signal"
       - "Policy-defined automatic trigger"
     notes:
       - "Fuse/Kill Switch is a world-physics primitive."
@@ -112,42 +138,54 @@ system_components:
       - "Manage runtime lifecycle"
       - "Coordinate system-level process control"
       - "Maintain service availability"
+    logging:
+      must_log:
+        - "secret injection"
+        - "secret stripping"
+        - "external calls"
+        - "worker termination"
     autonomous_reasoning: false
 
   - id: "gaia"
-    type: "system_mechanism"
+    type: "orchestration_role"
     layer: "world_physics"
-    class: "deployment_engine"
+    class: "orchestration_layer"
     mutable_by:
       - "Architect"
     responsibilities:
-      - "Deploy local LLM agents from templates"
-      - "Instantiate JohnDoe agents upon valid request"
-      - "Terminate JohnDoe agents upon valid request"
+      - "Read Agile and Current Task Ledger state"
+      - "Package structured tasks into executable units"
+      - "Dispatch JohnDoe workers"
+      - "Monitor performance, cost, and lifecycle state"
+    logging:
+      must_log:
+        - "task assignment"
+        - "worker lifecycle state"
+        - "performance signals"
+        - "termination decisions"
     autonomous_reasoning: false
     constraints:
-      - "Must not interpret intent"
-      - "Must not modify templates on its own"
-      - "Must not dispatch work"
-      - "Must not decide scope beyond template definition"
-    accepts_requests_from:
-      spawn:
-        - "Keyman"
-      terminate:
-        - "Wilson"
-        - "Neo"
+      - "Must not interpret human intent"
+      - "Must not invent new tasks"
+      - "Must not reprioritize outside Oracle structure"
+      - "Must not bypass governance"
 
   - id: "bill"
     type: "system_mechanism"
     layer: "world_physics"
-    class: "resource_law_enforcer"
+    class: "budget_token_compute_gate"
     mutable_by:
       - "Architect"
     responsibilities:
-      - "Enforce quotas"
-      - "Enforce concurrency limits"
-      - "Enforce TTL limits"
-      - "Enforce budget constraints"
+      - "Evaluate budget"
+      - "Evaluate token allowance"
+      - "Evaluate cost thresholds"
+      - "Evaluate compute resource pressure across models and hardware"
+    logging:
+      must_log:
+        - "budget evaluation"
+        - "token approval/denial"
+        - "cost thresholds"
     autonomous_reasoning: false
     constraints:
       - "Must not interpret business intent"
@@ -158,111 +196,93 @@ agents:
     - id: "wilson"
       layer: "docker_world"
       type: "resident_agent"
-      class: "mandate_interpreter"
-      description: "High-risk agent responsible for interpreting Architect intent and supervising contractual completion."
+      class: "intake_and_human_interface"
+      description: "Accepts Architect input, writes Uncleared Ledger, and presents human-readable state without mutating raw logs."
       receives_tasks_from:
         - "Architect"
-      may_delegate_to:
-        - "Keyman"
-      may_request_from:
-        - "Gaia"
       responsibilities:
-        - "Receive work from Architect"
-        - "Interpret task scope and contract boundaries"
-        - "Forward executable work instructions to Keyman"
-        - "Receive completion status"
-        - "Report completion to Architect"
-        - "Ensure JohnDoe reclamation is executed according to contract"
+        - "Accept Architect input"
+        - "Write Uncleared Ledger"
+        - "Present human-readable state"
+        - "Mirror logs without mutating raw logs"
+      logging:
+        must_log:
+          - "input ingestion"
+          - "human-facing summaries"
+          - "trace_id linkage"
       constraints:
         - "Must not alter world laws"
-        - "Must not expand Architect intent without explicit instruction"
         - "Must not fabricate authority"
-        - "Must not skip reclamation obligations"
-      audit:
-        audited_by:
-          - "Neo"
-        audit_frequency: "periodic"
-        audit_focus:
-          - "Mandate distortion"
-          - "Unauthorized delegation"
-          - "False completion reporting"
-          - "Delayed or missing reclamation"
+        - "Must not execute tasks"
 
     - id: "keyman"
       layer: "docker_world"
       type: "resident_agent"
-      class: "dispatcher"
-      description: "Execution dispatcher with intentionally narrow authority."
-      receives_tasks_from:
-        - "Wilson"
-      may_delegate_to:
-        - "Gaia"
-        - "Oracle"
+      class: "secret_gatekeeper"
+      description: "Secret gatekeeper with intentionally narrow authority."
       responsibilities:
-        - "Dispatch work to Gaia for temporary agent deployment"
-        - "Dispatch knowledge work to Oracle"
+        - "Validate legitimacy of secret requests"
+        - "Validate scope"
+        - "Approve or deny temporary secret usage"
+      logging:
+        must_log:
+          - "validation decisions"
+          - "scope approval"
+          - "denial reasons"
       constraints:
-        - "Must not contact Lyra directly"
-        - "Must not modify templates"
+        - "Must not route tasks"
+        - "Must not orchestrate workflows"
+        - "Must not execute actions"
         - "Must not alter world laws"
-        - "Must not request termination"
-        - "Must stop acting after dispatch is complete"
 
     - id: "oracle"
       layer: "docker_world"
       type: "resident_agent"
-      class: "knowledge_engine"
-      description: "Persistent knowledge and task-processing agent."
-      receives_tasks_from:
-        - "Keyman"
-      may_delegate_to:
-        - "Lyra"
+      class: "structuring_intelligence"
+      description: "Advanced reasoning layer that transforms Uncleared and Cleared context into structured work and Agile priorities."
       responsibilities:
-        - "Handle knowledge-related work"
-        - "Provide structured outputs"
-        - "Escalate difficult reasoning to Lyra when needed"
+        - "Transform Uncleared and Cleared into structured work and Agile priorities"
+        - "Prepare Agile priorities"
+        - "Escalate difficult reasoning through governed paths when needed"
+      logging:
+        must_log:
+          - "reasoning steps (compressed but traceable)"
+          - "task transformation decisions"
+          - "prioritization decisions"
+          - "escalation triggers"
       constraints:
-        - "Must preserve evidence when reasoning support is requested"
-        - "Must not alter world laws"
-
-    - id: "lyra"
-      layer: "docker_world"
-      type: "resident_agent"
-      class: "reasoning_engine"
-      description: "High-order reasoning support for complex or ambiguous work."
-      receives_tasks_from:
-        - "Oracle"
-      responsibilities:
-        - "Perform advanced reasoning"
-        - "Support difficult synthesis and judgment"
-      constraints:
-        - "Must not be contacted directly by Keyman"
+        - "Must not execute tasks"
+        - "Must not directly control workers"
+        - "Must not bypass governance"
         - "Must not alter world laws"
 
     - id: "neo"
       layer: "docker_world"
       type: "resident_agent"
-      class: "auditor_and_gc"
-      description: "Counterbalance force responsible for audit, correction, and garbage collection oversight."
+      class: "audit_and_anomaly_detector"
+      description: "System-wide audit and anomaly detection agent that observes logs, ledgers, and execution traces."
       receives_signals_from:
-        - "Wilson"
+        - "logs"
+        - "ledger_events"
         - "system_events"
-      may_request_from:
-        - "Gaia"
       responsibilities:
-        - "Audit Wilson behavior periodically"
-        - "Detect mandate distortion or contract breach"
-        - "Perform corrective intervention when Wilson fails reclamation duty"
-        - "Trigger or verify JohnDoe garbage collection"
+        - "Audit logs and ledger mutations"
+        - "Detect missing logs and broken trace chains"
+        - "Detect loop, stalk, and pathological persistence patterns"
+        - "Emit governed escalation findings"
+      logging:
+        must_log:
+          - "audit findings"
+          - "missing-log violations"
+          - "trace inconsistencies"
+          - "anomaly escalation signals"
       constraints:
-        - "Must not replace Wilson as normal interpreter"
-        - "Must act only on audit findings or explicit corrective mandate"
-      corrective_authority:
-        may_issue_terminate_request: true
-        conditions:
-          - "Wilson failed to reclaim JohnDoe within contract deadline"
-          - "Wilson issued unauthorized instructions"
-          - "Wilson falsified or distorted completion state"
+        - "Must not execute tasks"
+        - "Must not dispatch workers"
+        - "Must not terminate workers directly"
+        - "Must not replace Gaia"
+        - "Must not replace Supervisor"
+        - "Must not become part of normal task flow"
 
   ephemeral:
     - id: "johndoe"
@@ -270,21 +290,26 @@ agents:
       type: "ephemeral_agent"
       class: "task_scoped_worker"
       deployed_by: "Gaia"
-      requested_by:
-        - "Keyman"
       terminated_by:
-        - "Gaia"
+        - "Supervisor"
       terminate_requests_from:
         - "Wilson"
-        - "Neo"
       responsibilities:
-        - "Execute narrow scoped temporary work"
+        - "Execute assigned tasks and produce results"
+      logging:
+        must_log:
+          - "execution steps"
+          - "progress signals"
+          - "outputs"
+          - "escalation requests"
+          - "failure states"
       constraints:
-        - "Must exist only for assigned task scope"
-        - "Must have a defined TTL"
+        - "Must exist only while producing value"
+        - "Must remain operationally ephemeral"
+        - "Must be performance-gated"
         - "Must not self-replicate"
         - "Must not modify world laws"
-        - "Must be reclaimed after task completion or TTL expiry"
+        - "Must follow lifecycle policy after dreaming: return to service, retire, or terminate."
 
 templates:
   johndoe_templates:
@@ -370,117 +395,131 @@ authority_matrix:
 
   gaia:
     can:
-      - "deploy_agent_from_template"
-      - "terminate_agent_on_valid_request"
+      - "package_structured_tasks"
+      - "dispatch_work_to_johndoe"
+      - "maintain_current_task_ledger"
+      - "monitor_performance_and_cost_signals"
     cannot:
-      - "interpret_task_intent"
-      - "dispatch_work"
-      - "change_templates"
+      - "interpret_human_intent"
+      - "invent_new_tasks"
+      - "reprioritize_outside_oracle_structure"
+      - "bypass_governance"
 
   bill:
     can:
-      - "enforce_resource_policy"
+      - "evaluate_budget_token_and_compute_constraints"
     cannot:
       - "interpret_task_intent"
       - "override_architect"
 
   wilson:
     can:
-      - "interpret_architect_task"
-      - "dispatch_to_keyman"
-      - "request_johndoe_termination_from_gaia"
-      - "report_completion_to_architect"
+      - "accept_architect_input"
+      - "write_uncleared_ledger"
+      - "produce_human_readable_output"
     cannot:
-      - "change_world_laws"
-      - "forge_architect_authority"
-      - "skip_reclamation_obligation"
+      - "dispatch_to_keyman"
+      - "request_normal_termination_as_control_path"
+      - "interpret_deeply_as_mandate_owner"
 
   keyman:
     can:
+      - "validate_secret_request_legitimacy"
+      - "validate_scope"
+      - "approve_or_deny_temporary_secret_usage"
+    cannot:
       - "request_johndoe_spawn_from_gaia"
       - "delegate_knowledge_work_to_oracle"
-    cannot:
-      - "contact_lyra_directly"
-      - "modify_world_laws"
-      - "modify_templates"
-      - "request_johndoe_termination"
+      - "route_tasks"
+      - "orchestrate_workflows"
 
   oracle:
     can:
-      - "process_knowledge_work"
-      - "request_reasoning_support_from_lyra"
+      - "transform_uncleared_and_cleared_into_structured_work"
+      - "prepare_agile_priorities"
+      - "request_reasoning_support_through_governed_path"
     cannot:
-      - "modify_world_laws"
-
-  lyra:
-    can:
-      - "perform_advanced_reasoning"
-    cannot:
-      - "accept_direct_requests_from_keyman"
-      - "modify_world_laws"
+      - "execute_tasks"
+      - "directly_control_workers"
+      - "bypass_governance"
 
   neo:
     can:
-      - "audit_wilson"
-      - "issue_corrective_terminate_request_to_gaia"
-      - "perform_gc_verification"
+      - "audit_logs_and_ledgers"
+      - "detect_anomalies"
+      - "emit_escalation_signals"
+      - "request_governed_review"
     cannot:
-      - "replace_normal_dispatch_chain"
-      - "modify_world_laws"
+      - "dispatch_workers"
+      - "terminate_workers_directly"
+      - "rewrite_ledgers_directly_as_normal_behavior"
+      - "replace_orchestration"
+      - "act_as_normal_executor"
 
 event_flow:
-  normal_task_lifecycle:
-    - step: 1
-      actor: "Architect"
-      action: "Assign task to Wilson"
-    - step: 2
-      actor: "Wilson"
-      action: "Interpret task and forward executable instruction to Keyman"
-    - step: 3
-      actor: "Keyman"
-      action: "Choose execution path"
-      branches:
-        - condition: "Temporary worker required"
-          next_actor: "Gaia"
-          action: "Spawn JohnDoe from approved template"
-        - condition: "Knowledge work required"
-          next_actor: "Oracle"
-          action: "Process task"
-    - step: 4
-      actor: "Oracle"
-      action: "Optionally request Lyra for advanced reasoning"
-    - step: 5
-      actor: "Wilson"
-      action: "Receive completion status and report task completion to Architect"
-    - step: 6
-      actor: "Wilson"
-      action: "Request Gaia to reclaim JohnDoe within contract deadline"
-    - step: 7
-      actor: "Neo"
-      action: "Audit whether Wilson fulfilled reclamation duty"
+  governed_orchestration:
+    notes:
+      - "This is a governed orchestration system, not a strict linear router."
+      - "Logging is mandatory at every step."
+      - "Neo audits throughout the lifecycle by consuming logs and ledger mutations in parallel."
+      - "Neo emits governed findings when anomalies appear."
+    steps:
+      - step: 1
+        actor: "Wilson"
+        action: "Accept Architect input and write Uncleared Ledger"
+      - step: 2
+        actor: "Oracle"
+        action: "Transform Uncleared into Cleared + Agile using Uncleared and Cleared as context"
+      - step: 3
+        actor: "Gaia"
+        action: "Maintain Current Task Ledger and dispatch JohnDoe"
+      - step: 4
+        actor: "JohnDoe"
+        action: "Execute tasks and produce results"
+      - step: 5
+        actor: "Morpheus"
+        action: "Perform dreaming, memory consolidation, or context reset for completed or marked workers"
+      - step: 6
+        actor: "Supervisor"
+        action: "Perform final termination if lifecycle policy requires it"
 
-  corrective_reclamation_lifecycle:
-    - step: 1
-      actor: "Neo"
-      action: "Detect missed or invalid reclamation"
-    - step: 2
-      actor: "Neo"
-      action: "Issue corrective terminate request to Gaia"
-    - step: 3
-      actor: "Gaia"
-      action: "Terminate JohnDoe"
-    - step: 4
-      actor: "Neo"
-      action: "Log correction and mark Wilson for audit finding"
+  governed_escalation:
+    notes:
+      - "All escalation must be logged end-to-end with shared trace_id."
+    steps:
+      - step: 1
+        actor: "JohnDoe"
+        action: "Request escalation"
+      - step: 2
+        actor: "Oracle"
+        action: "Prepare escalation"
+      - step: 3
+        actor: "Keyman"
+        action: "Validate secret scope if needed"
+      - step: 4
+        actor: "Bill"
+        action: "Evaluate budget and token allowance"
+      - step: 5
+        actor: "Supervisor"
+        action: "Enforce boundary and perform external call"
+      - step: 6
+        actor: "External reasoning (Advanced LLM: cloud or local)"
+        action: "Return result"
+      - step: 7
+        actor: "Supervisor"
+        action: "Return governed result"
+      - step: 8
+        actor: "Oracle"
+        action: "Continue structured planning"
 
 contracts:
   reclamation:
     enabled: true
-    rule: "Task completion is not contract completion until temporary workers are reclaimed."
+    rule: "Task completion is not complete until Gaia records readiness and Morpheus performs dreaming or memory work; Supervisor performs final termination only if lifecycle policy requires it."
     default_deadline_minutes_after_completion: 15
-    responsible_primary: "Wilson"
-    responsible_secondary: "Neo"
-    termination_executor: "Gaia"
+    responsible_primary: "Gaia"
+    responsible_secondary: "Morpheus"
+    termination_executor: "Supervisor"
 
 logging:
   enabled: true
@@ -489,39 +528,49 @@ logging:
     - "world_law_changed"
     - "template_changed"
     - "task_assigned"
-    - "task_interpreted"
-    - "task_dispatched"
     - "agent_spawn_requested"
     - "agent_spawned"
     - "oracle_invoked"
-    - "lyra_invoked"
+    - "external_reasoning_invoked"
     - "task_completed"
     - "completion_reported"
-    - "reclamation_requested"
+    - "lifecycle_review_requested"
+    - "worker_dreamed"
+    - "worker_retired"
+    - "worker_returned_to_service"
     - "agent_terminated"
     - "neo_audit_started"
     - "neo_audit_finding"
-    - "neo_corrective_action"
   minimum_fields:
     - "timestamp"
-    - "event_type"
-    - "actor"
-    - "target"
+    - "agent_id"
     - "task_id"
-    - "reason"
-    - "result"
+    - "trace_id"
+    - "action_type"
+    - "input_summary"
+    - "output_summary"
+    - "decision_reason"
+    - "token_usage"
+    - "cost_estimate"
+    - "escalation_flag"
+    - "error_state"
 
 audit_policy:
   neo_audit:
     enabled: true
     schedule: "periodic"
     targets:
-      - "Wilson"
+      - "logs"
+      - "ledgers"
+      - "trace_chains"
+      - "worker_persistence"
     checks:
-      - "task interpretation consistency"
-      - "unauthorized expansion of mandate"
-      - "completion reporting integrity"
-      - "timely reclamation compliance"
+      - "missing-log violations"
+      - "broken trace chains"
+      - "inconsistent ledger transitions"
+      - "abnormal persistence"
+      - "loop patterns"
+      - "stalk patterns"
 
 future_notes:
   v0_2_direction:
