@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-Gaia v0.1
-Deterministic deployment engine for little7 / UnifAI.
+Gaia v0.3
+Execution-only scheduler for little7 / UnifAI.
 
 Responsibilities:
 - Load world charter
-- Validate spawn / terminate requests
-- Enforce simple resource law checks
-- Spawn ephemeral JohnDoe workers from approved templates
+- Accept pre-prioritized plans from Oracle
+- Dispatch spawn/terminate steps deterministically
 - Record lifecycle events into supervisor.db
 - Append structured logs to supervisor.log
 
 This module is intentionally non-autonomous.
-It does not interpret intent.
-It only executes valid requests according to templates and world laws.
+It does not interpret intent, prioritize work, or self-heal failures.
 """
 
 from __future__ import annotations
@@ -31,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import yaml
+import yaml  # type: ignore[import-not-found]
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -44,13 +42,19 @@ WORLD_CHARTER_PATH = ROOT / "little7-installer" / "config" / "world_charter.yaml
 WORKER_DUMMY_PATH = ROOT / "little7-installer" / "docker" / "worker_dummy.py"
 
 
-@dataclass
-class SpawnRequest:
-    requester: str
-    template_id: str
-    reason: str
+@dataclass(frozen=True)
+class DispatchStep:
+    step_id: str
+    action: str  # spawn_johndoe | terminate_johndoe
+    payload: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class OracleExecutionPlan:
+    plan_id: str
     task_id: str
-    ttl_minutes: Optional[int] = None
+    issuer: str
+    steps: tuple[DispatchStep, ...]
 
 
 class GaiaError(Exception):
@@ -65,15 +69,10 @@ class ValidationError(GaiaError):
     """Raised when a request is invalid."""
 
 
-class ResourcePolicyError(GaiaError):
-    """Raised when a request violates active world laws."""
-
-
 class Gaia:
-    """Deterministic deployment engine."""
+    """Execution-only deployment scheduler."""
 
-    ALLOWED_SPAWN_REQUESTERS = {"Keyman"}
-    ALLOWED_TERMINATE_REQUESTERS = {"Wilson", "Neo"}
+    ALLOWED_PLAN_ISSUER = "Oracle"
 
     def __init__(
         self,
@@ -95,8 +94,8 @@ class Gaia:
         if not self.charter_path.exists():
             raise FileNotFoundError(f"World charter not found: {self.charter_path}")
 
-        with self.charter_path.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        with self.charter_path.open("r", encoding="utf-8") as handle:
+            return yaml.safe_load(handle)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -173,281 +172,270 @@ class Gaia:
             "reason": reason,
             "payload": payload or {},
         }
-        with self.log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(line, ensure_ascii=False) + "\n")
-
-    def _resource_defaults(self) -> Dict[str, Any]:
-        return (
-            self.charter.get("world_laws", {})
-            .get("resource_policy", {})
-            .get("defaults", {})
-        )
+        with self.log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(line, ensure_ascii=False) + "\n")
 
     def _template_map(self) -> Dict[str, Dict[str, Any]]:
-        templates = (
-            self.charter.get("templates", {})
-            .get("johndoe_templates", [])
+        templates = self.charter.get("templates", {}).get("johndoe_templates", [])
+        return {tpl["id"]: tpl for tpl in templates if isinstance(tpl, dict) and "id" in tpl}
+
+    def _validate_plan(self, plan: OracleExecutionPlan) -> None:
+        if plan.issuer != self.ALLOWED_PLAN_ISSUER:
+            raise AuthorizationError(f"Plan issuer '{plan.issuer}' is not allowed.")
+
+        if not plan.task_id.strip():
+            raise ValidationError("task_id must not be empty")
+
+        if not plan.steps:
+            raise ValidationError("steps must not be empty")
+
+    def dispatch_plan(self, plan: OracleExecutionPlan) -> dict[str, Any]:
+        self._validate_plan(plan)
+
+        self._log_event(
+            event_type="gaia_plan_received",
+            actor="Gaia",
+            task_id=plan.task_id,
+            reason="Plan accepted for deterministic dispatch",
+            payload={
+                "plan_id": plan.plan_id,
+                "issuer": plan.issuer,
+                "steps": len(plan.steps),
+            },
         )
-        return {tpl["id"]: tpl for tpl in templates}
 
-    def _count_active_johndoe(self) -> int:
-        with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT COUNT(*) AS cnt
-                FROM agents
-                WHERE agent_type = 'johndoe'
-                  AND status = 'running'
-                """
-            ).fetchone()
-            return int(row["cnt"])
+        step_results: list[dict[str, Any]] = []
+        for step in plan.steps:
+            result = self._dispatch_step(plan.task_id, step)
+            step_results.append(result)
+            if result.get("status") != "ok":
+                final_state = {
+                    "task_id": plan.task_id,
+                    "plan_id": plan.plan_id,
+                    "status": "failed",
+                    "steps": step_results,
+                }
+                self._log_event(
+                    event_type="gaia_plan_failed",
+                    actor="Gaia",
+                    task_id=plan.task_id,
+                    reason="Plan failed during dispatch",
+                    payload=final_state,
+                )
+                return final_state
 
-    def _count_recent_spawns(self, window_seconds: int = 600) -> int:
-        threshold = int(time.time()) - window_seconds
-        with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT COUNT(*) AS cnt
-                FROM events
-                WHERE event_type = 'agent_spawned'
-                  AND timestamp >= ?
-                """,
-                (threshold,),
-            ).fetchone()
-            return int(row["cnt"])
+        final_state = {
+            "task_id": plan.task_id,
+            "plan_id": plan.plan_id,
+            "status": "ok",
+            "steps": step_results,
+        }
+        self._log_event(
+            event_type="gaia_plan_completed",
+            actor="Gaia",
+            task_id=plan.task_id,
+            reason="Plan dispatched without local decision-making",
+            payload=final_state,
+        )
+        return final_state
 
-    def _authorize_spawn(self, requester: str) -> None:
-        if requester not in self.ALLOWED_SPAWN_REQUESTERS:
-            raise AuthorizationError(f"Requester '{requester}' is not allowed to spawn JohnDoe.")
-
-    def _authorize_terminate(self, requester: str) -> None:
-        if requester not in self.ALLOWED_TERMINATE_REQUESTERS:
-            raise AuthorizationError(f"Requester '{requester}' is not allowed to terminate JohnDoe.")
-
-    def _validate_spawn_request(self, req: SpawnRequest) -> Dict[str, Any]:
-        self._authorize_spawn(req.requester)
-
-        if not req.reason.strip():
-            raise ValidationError("Spawn reason must not be empty.")
-        if not req.task_id.strip():
-            raise ValidationError("Task ID must not be empty.")
-
-        templates = self._template_map()
-        if req.template_id not in templates:
-            raise ValidationError(f"Unknown template_id: {req.template_id}")
-
-        template = templates[req.template_id]
-        defaults = self._resource_defaults()
-
-        max_concurrent = int(defaults.get("max_concurrent_johndoe", 2))
-        max_spawn_per_10m = int(defaults.get("max_spawn_per_10_minutes", 1))
-
-        if self._count_active_johndoe() >= max_concurrent:
-            raise ResourcePolicyError(
-                f"Active JohnDoe count exceeded: max_concurrent_johndoe={max_concurrent}"
-            )
-
-        if self._count_recent_spawns(window_seconds=600) >= max_spawn_per_10m:
-            raise ResourcePolicyError(
-                f"Spawn rate exceeded: max_spawn_per_10_minutes={max_spawn_per_10m}"
-            )
-
-        ttl_minutes = req.ttl_minutes or template["resources"]["ttl_minutes"]
-        default_ttl = int(defaults.get("default_johndoe_ttl_minutes", 60))
-        ttl_minutes = min(ttl_minutes, default_ttl if req.ttl_minutes is None else ttl_minutes)
+    def _dispatch_step(self, task_id: str, step: DispatchStep) -> dict[str, Any]:
+        if step.action == "spawn_johndoe":
+            return self._dispatch_spawn(task_id, step)
+        if step.action == "terminate_johndoe":
+            return self._dispatch_terminate(task_id, step)
 
         return {
-            "template": template,
-            "ttl_minutes": ttl_minutes,
+            "step_id": step.step_id,
+            "action": step.action,
+            "status": "failed",
+            "error": "unsupported action",
         }
 
-    def spawn_johndoe(self, req: SpawnRequest) -> str:
-        validated = self._validate_spawn_request(req)
-        template = validated["template"]
-        ttl_minutes = validated["ttl_minutes"]
-
-        agent_id = f"johndoe-{int(time.time())}-{uuid.uuid4().hex[:8]}"
-        created_at = int(time.time())
-        expires_at = created_at + ttl_minutes * 60
-
-        env = os.environ.copy()
-        env.update(
-            {
-                "UNIFAI_AGENT_ID": agent_id,
-                "UNIFAI_AGENT_CLASS": "johndoe",
-                "UNIFAI_TEMPLATE_ID": req.template_id,
-                "UNIFAI_TASK_ID": req.task_id,
-                "UNIFAI_REASON": req.reason,
-                "UNIFAI_EXPIRES_AT": str(expires_at),
-            }
-        )
-
-        if not WORKER_DUMMY_PATH.exists():
-            raise FileNotFoundError(f"Worker dummy not found: {WORKER_DUMMY_PATH}")
-
-        process = subprocess.Popen(
-            [sys.executable, str(WORKER_DUMMY_PATH)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env,
-            cwd=str(ROOT),
-        )
-
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO agents (
-                    agent_id, agent_type, template_id, requester, reason, task_id, pid,
-                    status, created_at, expires_at, terminated_at, termination_reason
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    agent_id,
-                    "johndoe",
-                    req.template_id,
-                    req.requester,
-                    req.reason,
-                    req.task_id,
-                    process.pid,
-                    "running",
-                    created_at,
-                    expires_at,
-                    None,
-                    None,
-                ),
-            )
-            conn.commit()
-
-        self._log_event(
-            event_type="agent_spawned",
-            actor="Gaia",
-            target=agent_id,
-            task_id=req.task_id,
-            reason=req.reason,
-            payload={
-                "requester": req.requester,
-                "template_id": req.template_id,
-                "pid": process.pid,
-                "ttl_minutes": ttl_minutes,
-            },
-        )
-
-        return agent_id
-
-    def terminate_johndoe(self, requester: str, agent_id: str, reason: str) -> None:
-        self._authorize_terminate(requester)
-
-        with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT * FROM agents
-                WHERE agent_id = ?
-                  AND agent_type = 'johndoe'
-                """,
-                (agent_id,),
-            ).fetchone()
-
-            if row is None:
-                raise ValidationError(f"Agent not found: {agent_id}")
-
-            if row["status"] != "running":
-                raise ValidationError(f"Agent is not running: {agent_id}")
-
-            pid = row["pid"]
-
+    def _dispatch_spawn(self, task_id: str, step: DispatchStep) -> dict[str, Any]:
         try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+            template_id = str(step.payload["template_id"])
+            ttl_minutes = int(step.payload["ttl_minutes"])
+            requester = str(step.payload.get("requester", "Keyman"))
+            reason = str(step.payload.get("reason", ""))
+            agent_id = str(step.payload.get("agent_id") or f"johndoe-{int(time.time())}-{uuid.uuid4().hex[:8]}")
 
-        terminated_at = int(time.time())
+            templates = self._template_map()
+            if template_id not in templates:
+                raise ValidationError(f"Unknown template_id: {template_id}")
 
-        with self._connect() as conn:
-            conn.execute(
-                """
-                UPDATE agents
-                SET status = ?, terminated_at = ?, termination_reason = ?
-                WHERE agent_id = ?
-                """,
-                ("terminated", terminated_at, reason, agent_id),
+            if not WORKER_DUMMY_PATH.exists():
+                raise FileNotFoundError(f"Worker dummy not found: {WORKER_DUMMY_PATH}")
+
+            created_at = int(time.time())
+            expires_at = created_at + ttl_minutes * 60
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "UNIFAI_AGENT_ID": agent_id,
+                    "UNIFAI_AGENT_CLASS": "johndoe",
+                    "UNIFAI_TEMPLATE_ID": template_id,
+                    "UNIFAI_TASK_ID": task_id,
+                    "UNIFAI_REASON": reason,
+                    "UNIFAI_EXPIRES_AT": str(expires_at),
+                }
             )
-            conn.commit()
 
-        self._log_event(
-            event_type="agent_terminated",
-            actor="Gaia",
-            target=agent_id,
-            task_id=None,
-            reason=reason,
-            payload={
-                "requester": requester,
-                "terminated_at": terminated_at,
-            },
-        )
-
-    def list_agents(self, status: Optional[str] = None) -> list[dict[str, Any]]:
-        query = "SELECT * FROM agents"
-        params: list[Any] = []
-
-        if status:
-            query += " WHERE status = ?"
-            params.append(status)
-
-        query += " ORDER BY created_at DESC"
-
-        with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-
-        return [dict(row) for row in rows]
-
-    def sweep_expired(self) -> int:
-        now = int(time.time())
-        terminated = 0
-
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT agent_id
-                FROM agents
-                WHERE status = 'running'
-                  AND expires_at IS NOT NULL
-                  AND expires_at <= ?
-                """,
-                (now,),
-            ).fetchall()
-
-        for row in rows:
-            self.terminate_johndoe(
-                requester="Neo",
-                agent_id=row["agent_id"],
-                reason="TTL expired; corrective reclamation by Neo",
+            process = subprocess.Popen(
+                [sys.executable, str(WORKER_DUMMY_PATH)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                cwd=str(ROOT),
             )
-            terminated += 1
 
-        return terminated
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO agents (
+                        agent_id, agent_type, template_id, requester, reason, task_id, pid,
+                        status, created_at, expires_at, terminated_at, termination_reason
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        agent_id,
+                        "johndoe",
+                        template_id,
+                        requester,
+                        reason,
+                        task_id,
+                        process.pid,
+                        "running",
+                        created_at,
+                        expires_at,
+                        None,
+                        None,
+                    ),
+                )
+                conn.commit()
+
+            self._log_event(
+                event_type="gaia_dispatch_spawned",
+                actor="Gaia",
+                target=agent_id,
+                task_id=task_id,
+                reason=reason,
+                payload={
+                    "step_id": step.step_id,
+                    "template_id": template_id,
+                    "pid": process.pid,
+                    "requester": requester,
+                    "ttl_minutes": ttl_minutes,
+                },
+            )
+            return {
+                "step_id": step.step_id,
+                "action": step.action,
+                "status": "ok",
+                "agent_id": agent_id,
+            }
+        except Exception as error:
+            return {
+                "step_id": step.step_id,
+                "action": step.action,
+                "status": "failed",
+                "error": str(error),
+            }
+
+    def _dispatch_terminate(self, task_id: str, step: DispatchStep) -> dict[str, Any]:
+        try:
+            agent_id = str(step.payload["agent_id"])
+            reason = str(step.payload.get("reason", "terminated by Oracle plan"))
+
+            with self._connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT pid, status
+                    FROM agents
+                    WHERE agent_id = ?
+                      AND agent_type = 'johndoe'
+                    """,
+                    (agent_id,),
+                ).fetchone()
+
+                if row is None:
+                    raise ValidationError(f"Agent not found: {agent_id}")
+                if row["status"] != "running":
+                    raise ValidationError(f"Agent is not running: {agent_id}")
+
+                pid = int(row["pid"])
+
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+            terminated_at = int(time.time())
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE agents
+                    SET status = ?, terminated_at = ?, termination_reason = ?
+                    WHERE agent_id = ?
+                    """,
+                    ("terminated", terminated_at, reason, agent_id),
+                )
+                conn.commit()
+
+            self._log_event(
+                event_type="gaia_dispatch_terminated",
+                actor="Gaia",
+                target=agent_id,
+                task_id=task_id,
+                reason=reason,
+                payload={"step_id": step.step_id, "terminated_at": terminated_at},
+            )
+            return {
+                "step_id": step.step_id,
+                "action": step.action,
+                "status": "ok",
+                "agent_id": agent_id,
+            }
+        except Exception as error:
+            return {
+                "step_id": step.step_id,
+                "action": step.action,
+                "status": "failed",
+                "error": str(error),
+            }
+
+
+def _parse_plan(raw_plan: dict[str, Any]) -> OracleExecutionPlan:
+    steps_raw = raw_plan.get("steps", [])
+    steps: list[DispatchStep] = []
+    if isinstance(steps_raw, list):
+        for item in steps_raw:
+            if not isinstance(item, dict):
+                continue
+            steps.append(
+                DispatchStep(
+                    step_id=str(item.get("step_id", "")),
+                    action=str(item.get("action", "")),
+                    payload=dict(item.get("payload", {})) if isinstance(item.get("payload", {}), dict) else {},
+                )
+            )
+
+    return OracleExecutionPlan(
+        plan_id=str(raw_plan.get("plan_id", "")),
+        task_id=str(raw_plan.get("task_id", "")),
+        issuer=str(raw_plan.get("issuer", "")),
+        steps=tuple(steps),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Gaia v0.1 deployment engine")
+    parser = argparse.ArgumentParser(description="Gaia execution-only scheduler")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    spawn = sub.add_parser("spawn", help="Spawn a JohnDoe agent")
-    spawn.add_argument("--requester", required=True, help="Requester identity, usually Keyman")
-    spawn.add_argument("--template", required=True, help="Approved JohnDoe template ID")
-    spawn.add_argument("--reason", required=True, help="Reason for spawning")
-    spawn.add_argument("--task-id", required=True, help="Task ID associated with this spawn")
-    spawn.add_argument("--ttl-minutes", type=int, default=None, help="Optional TTL override")
-
-    terminate = sub.add_parser("terminate", help="Terminate a JohnDoe agent")
-    terminate.add_argument("--requester", required=True, help="Requester identity, usually Wilson or Neo")
-    terminate.add_argument("--agent-id", required=True, help="Agent ID to terminate")
-    terminate.add_argument("--reason", required=True, help="Reason for termination")
-
-    list_cmd = sub.add_parser("list", help="List agents")
-    list_cmd.add_argument("--status", default=None, help="Optional status filter")
-
-    sub.add_parser("sweep-expired", help="Terminate expired JohnDoe agents")
+    dispatch = sub.add_parser("dispatch-plan", help="Dispatch a pre-prioritized Oracle execution plan")
+    dispatch.add_argument("--plan-json", required=True, help="Serialized OracleExecutionPlan JSON payload")
 
     return parser
 
@@ -458,45 +446,24 @@ def main() -> int:
     gaia = Gaia()
 
     try:
-        if args.command == "spawn":
-            req = SpawnRequest(
-                requester=args.requester,
-                template_id=args.template,
-                reason=args.reason,
-                task_id=args.task_id,
-                ttl_minutes=args.ttl_minutes,
-            )
-            agent_id = gaia.spawn_johndoe(req)
-            print(agent_id)
-            return 0
+        if args.command == "dispatch-plan":
+            raw_plan = json.loads(args.plan_json)
+            if not isinstance(raw_plan, dict):
+                raise ValidationError("plan-json must be a JSON object")
 
-        if args.command == "terminate":
-            gaia.terminate_johndoe(
-                requester=args.requester,
-                agent_id=args.agent_id,
-                reason=args.reason,
-            )
-            print(f"terminated: {args.agent_id}")
-            return 0
-
-        if args.command == "list":
-            agents = gaia.list_agents(status=args.status)
-            print(json.dumps(agents, indent=2, ensure_ascii=False))
-            return 0
-
-        if args.command == "sweep-expired":
-            terminated = gaia.sweep_expired()
-            print(f"expired agents terminated: {terminated}")
-            return 0
+            plan = _parse_plan(raw_plan)
+            result = gaia.dispatch_plan(plan)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0 if result.get("status") == "ok" else 1
 
         parser.error("Unknown command")
         return 2
 
-    except GaiaError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+    except GaiaError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    except Exception as e:
-        print(f"FATAL: {e}", file=sys.stderr)
+    except Exception as error:
+        print(f"FATAL: {error}", file=sys.stderr)
         return 99
 
 
