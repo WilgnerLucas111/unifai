@@ -2,11 +2,12 @@ version: "0.1"
 world:
   name: "little7"
   codename: "UnifAI"
-  description: "A rule-driven local AI society with human sovereignty and governed orchestration."
+  description: "A rule-driven local AI society with human sovereignty and constrained agent orchestration."
   owner: "Architect"
   sovereignty:
     architect_is_human: true
     architect_has_final_authority: true
+    architect_guardrails_required: false
     architect_changes_must_be_logged: true
     architect_changes_must_be_versioned: true
     architect_changes_must_be_revertible: true
@@ -20,8 +21,9 @@ architecture_layers:
       - "Bill/Budget gate"
       - "Fuse/Kill Switch"
     notes:
-      - "Supervisor remains the enforcement boundary for secrets, external calls, and worker termination."
-      - "All world-physics actions are invalid unless they are logged."
+      - "The full world-physics layer may grow significantly over time."
+      - "supervisor.py should remain small, readable, and auditable."
+      - "Budget and secret primitives must remain outside supervisor.py."
   constitution:
     description: "Governing law all agents and mechanisms must follow."
     amendment_process:
@@ -39,23 +41,26 @@ principles:
     name: "Human Sovereignty"
     description: "Architect is the only human authority allowed to modify world laws."
   - id: "P002"
-    name: "Governed Orchestration"
-    description: "Wilson, Oracle, and Gaia shape work through ledgers instead of a central dispatcher."
+    name: "Deterministic Infrastructure"
+    description: "Gaia, Bill, and Supervisor are system mechanisms, not autonomous reasoning agents."
   - id: "P003"
     name: "Secret Gatekeeping"
-    description: "Keyman validates legitimacy and scope of secret requests but does not route tasks."
+    description: "Keyman validates legitimacy and scope of secret requests and does not route tasks."
   - id: "P004"
-    name: "Ephemeral Labor"
-    description: "JohnDoe agents are short-lived workers and exist only while producing value."
+    name: "Anti-Forgery Oversight"
+    description: "Neo audits logs, ledgers, and trace chains system-wide."
   - id: "P005"
-    name: "Auditability"
-    description: "No action is valid unless it is logged, attributable, and traceable."
+    name: "Ephemeral Labor"
+    description: "JohnDoe agents are temporary, task-scoped, and must be reclaimed after use."
   - id: "P006"
+    name: "Auditability"
+    description: "All meaningful actions, state transitions, decisions, escalations, and external interactions must be logged."
+  - id: "P007"
     name: "Authority Separation"
-    description: "No agent may bypass governance, secret boundaries, or logging requirements."
+    description: "Agent capability does not grant authority; authority is defined by world physics and constitution."
 
 logging_invariant:
-  statement: "Logging is governance. If an action is not logged, it is treated as non-existent or as a violation."
+  statement: "All agents MUST produce complete, structured, and traceable logs for every meaningful action. No action is considered valid unless it is logged."
   principles:
     - "Every state transition must be logged."
     - "Every decision must be attributable."
@@ -63,9 +68,9 @@ logging_invariant:
     - "Every external interaction must be recorded."
     - "Logs must be immutable once written."
     - "Logs must be auditable by Neo."
-    - "Logs must be consumable by Wilson."
-    - "Logs must be usable by Morpheus."
-    - "Logs must be encrypted while remaining auditable."
+    - "Logs must be consumable by Wilson (human interface)."
+    - "Logs must be usable by Morpheus (memory consolidation)."
+    - "Logs must be encrypted and make it auditable (Blackbox-like behavior)."
   minimum_required_fields:
     - "timestamp"
     - "agent_id"
@@ -81,86 +86,110 @@ logging_invariant:
     - "error_state"
 
 world_laws:
+  resource_policy:
+    managed_by: "Bill"
+    adjustable_by: "Architect"
+    defaults:
+      max_concurrent_johndoe: 2
+      default_johndoe_ttl_minutes: 60
+      max_spawn_per_10_minutes: 1
+      max_cpu_per_johndoe: 1
+      max_memory_mb_per_johndoe: 1024
+      max_gpu_per_johndoe: 0
+      max_token_budget_per_task: 50000
+    notes:
+      - "These are default physics values, not moral constraints."
+      - "Architect may change them at will."
+      - "Bill enforces the currently active values."
+  budget_gate_policy:
+    managed_by: "Bill"
+    layer: "world_physics"
+    notes:
+      - "Budget authority is a world-physics primitive."
+      - "Budget control must not be delegated to ad hoc agent behavior."
   secret_safe_policy:
     managed_by: "Secret Safe"
     enforced_by: "Supervisor"
     layer: "world_physics"
     notes:
-      - "All secrets remain in Supervisor-controlled world physics."
-      - "Keyman validates legitimacy and scope of access requests."
-      - "Supervisor injects secrets into outbound calls and strips them from responses."
-      - "TECH_DEBT(PR22): runtime secret lifecycle may still lag this charter wording."
-  budget_gate_policy:
-    managed_by: "Bill"
-    enforced_by: "Supervisor"
-    layer: "world_physics"
-    notes:
-      - "Budget, token, and cost checks must be logged before escalation leaves governed boundaries."
-      - "TECH_DEBT(PR22): runtime budget logging may still lag this charter wording."
+      - "Secrets remain in world physics boundaries and never become direct agent-owned data."
+      - "Secret handling must not be embedded in ad hoc agent behavior."
   fuse_kill_switch_policy:
     managed_by: "Fuse/Kill Switch"
     enforced_by: "Supervisor"
     layer: "world_physics"
     triggers:
       - "Architect"
-      - "Neo"
+      - "Neo anomaly signal"
       - "Policy-defined automatic trigger"
     notes:
-      - "Termination and pause decisions must be logged with shared trace_id linkage."
-      - "TECH_DEBT(PR22): runtime termination reasons may still lag this charter wording."
-
-core_architecture:
-  statement: "We use a 3-agent + 4-ledger layout for task assignment and triage."
-  agents:
-    - "Wilson"
-    - "Oracle"
-    - "Gaia"
-  ledgers:
-    - "Uncleared Ledger"
-    - "Cleared Ledger"
-    - "Agile Ledger"
-    - "Current Task Ledger"
-  flow:
-    - "Wilson -> Uncleared Ledger"
-    - "Oracle -> Cleared + Agile Ledger"
-    - "Gaia -> Current <-> JohnDoe"
-    - "Morpheus supports dreaming from Current-state workers"
-    - "Supervisor enforces termination and boundary control"
+      - "Fuse/Kill Switch is a world-physics primitive."
+      - "Fuse may block secret release and pause or terminate unsafe runtime flows."
 
 system_components:
   - id: "supervisor"
     type: "system_mechanism"
     layer: "world_physics"
-    class: "boundary_enforcer"
+    class: "runtime_controller"
+    mutable_by:
+      - "Architect"
     responsibilities:
-      - "Own secrets"
-      - "Control external calls"
-      - "Enforce runtime boundaries"
-      - "Terminate workers when required"
+      - "Enforce world-physics boundary at runtime"
+      - "Manage runtime lifecycle"
+      - "Coordinate system-level process control"
+      - "Maintain service availability"
     logging:
       must_log:
         - "secret injection"
         - "secret stripping"
         - "external calls"
         - "worker termination"
+    autonomous_reasoning: false
+
+  - id: "gaia"
+    type: "orchestration_role"
+    layer: "world_physics"
+    class: "orchestration_layer"
+    mutable_by:
+      - "Architect"
+    responsibilities:
+      - "Read Agile and Current Task Ledger state"
+      - "Package structured tasks into executable units"
+      - "Dispatch JohnDoe workers"
+      - "Monitor performance, cost, and lifecycle state"
+    logging:
+      must_log:
+        - "task assignment"
+        - "worker lifecycle state"
+        - "performance signals"
+        - "termination decisions"
+    autonomous_reasoning: false
     constraints:
-      - "Must not expose secrets in logs"
+      - "Must not interpret human intent"
+      - "Must not invent new tasks"
+      - "Must not reprioritize outside Oracle structure"
+      - "Must not bypass governance"
 
   - id: "bill"
     type: "system_mechanism"
     layer: "world_physics"
-    class: "budget_gate"
+    class: "budget_token_compute_gate"
+    mutable_by:
+      - "Architect"
     responsibilities:
       - "Evaluate budget"
       - "Evaluate token allowance"
       - "Evaluate cost thresholds"
+      - "Evaluate compute resource pressure across models and hardware"
     logging:
       must_log:
         - "budget evaluation"
-        - "token approval or denial"
-        - "cost threshold decisions"
+        - "token approval/denial"
+        - "cost thresholds"
+    autonomous_reasoning: false
     constraints:
-      - "Must not interpret task intent"
+      - "Must not interpret business intent"
+      - "Must only enforce active world laws"
 
 agents:
   resident:
@@ -168,124 +197,105 @@ agents:
       layer: "docker_world"
       type: "resident_agent"
       class: "intake_and_human_interface"
+      description: "Accepts Architect input, writes Uncleared Ledger, and presents human-readable state without mutating raw logs."
+      receives_tasks_from:
+        - "Architect"
       responsibilities:
         - "Accept Architect input"
         - "Write Uncleared Ledger"
-        - "Present human-readable logs"
-        - "Never mutate raw logs"
+        - "Present human-readable state"
+        - "Mirror logs without mutating raw logs"
       logging:
         must_log:
           - "input ingestion"
           - "human-facing summaries"
-          - "trace_id linkage for mirrored output"
+          - "trace_id linkage"
       constraints:
+        - "Must not alter world laws"
+        - "Must not fabricate authority"
         - "Must not execute tasks"
-        - "Must not interpret deeply"
-        - "Must not mutate raw logs"
+
+    - id: "keyman"
+      layer: "docker_world"
+      type: "resident_agent"
+      class: "secret_gatekeeper"
+      description: "Secret gatekeeper with intentionally narrow authority."
+      responsibilities:
+        - "Validate legitimacy of secret requests"
+        - "Validate scope"
+        - "Approve or deny temporary secret usage"
+      logging:
+        must_log:
+          - "validation decisions"
+          - "scope approval"
+          - "denial reasons"
+      constraints:
+        - "Must not route tasks"
+        - "Must not orchestrate workflows"
+        - "Must not execute actions"
+        - "Must not alter world laws"
 
     - id: "oracle"
       layer: "docker_world"
       type: "resident_agent"
       class: "structuring_intelligence"
+      description: "Advanced reasoning layer that transforms Uncleared and Cleared context into structured work and Agile priorities."
       responsibilities:
-        - "Transform Uncleared into Cleared + Agile using Uncleared and Cleared as context"
-        - "Disambiguate intent"
-        - "Structure tasks"
-        - "Reason with advanced LLM (cloud, local, or hybrid)"
+        - "Transform Uncleared and Cleared into structured work and Agile priorities"
+        - "Prepare Agile priorities"
+        - "Escalate difficult reasoning through governed paths when needed"
       logging:
         must_log:
-          - "reasoning steps in compressed but traceable form"
+          - "reasoning steps (compressed but traceable)"
           - "task transformation decisions"
           - "prioritization decisions"
           - "escalation triggers"
       constraints:
         - "Must not execute tasks"
         - "Must not directly control workers"
-        - "Must not bypass governance layers"
-
-    - id: "gaia"
-      layer: "docker_world"
-      type: "resident_agent"
-      class: "orchestration_layer"
-      responsibilities:
-        - "Assign tasks to JohnDoe"
-        - "Maintain Current Task Ledger"
-        - "Monitor performance"
-        - "Mark JohnDoe for dreaming via Morpheus when required"
-      logging:
-        must_log:
-          - "task assignment"
-          - "worker lifecycle state"
-          - "performance signals"
-          - "termination or dreaming decisions"
-      constraints:
-        - "Must not invent tasks outside defined scope"
-        - "Must not act as a dictator"
-        - "TECH_DEBT(PR22): runtime orchestration may still lag this charter wording"
-
-    - id: "keyman"
-      layer: "docker_world"
-      type: "resident_agent"
-      class: "secret_gatekeeper"
-      responsibilities:
-        - "Validate legitimacy of secret requests"
-        - "Approve or deny access scope"
-        - "Issue temporary secret usage grants"
-      logging:
-        must_log:
-          - "validation decisions"
-          - "scope approvals"
-          - "denial reasons"
-      constraints:
-        - "Must not route tasks"
-        - "Must not orchestrate workflows"
-        - "Must not execute actions"
-        - "TECH_DEBT(PR22): implementation may still contain older routing-oriented descriptions"
+        - "Must not bypass governance"
+        - "Must not alter world laws"
 
     - id: "neo"
       layer: "docker_world"
       type: "resident_agent"
-      class: "audit_layer"
+      class: "audit_and_anomaly_detector"
+      description: "System-wide audit and anomaly detection agent that observes logs, ledgers, and execution traces."
+      receives_signals_from:
+        - "logs"
+        - "ledger_events"
+        - "system_events"
       responsibilities:
-        - "Detect anomalies"
-        - "Detect missing logs"
-        - "Detect inconsistent trace chains"
-        - "Detect loop patterns"
-        - "Detect abnormal persistence"
+        - "Audit logs and ledger mutations"
+        - "Detect missing logs and broken trace chains"
+        - "Detect loop, stalk, and pathological persistence patterns"
+        - "Emit governed escalation findings"
       logging:
         must_log:
           - "audit findings"
           - "missing-log violations"
-          - "trace reconstruction anomalies"
+          - "trace inconsistencies"
+          - "anomaly escalation signals"
       constraints:
         - "Must not execute tasks"
-        - "Must be able to reconstruct any task purely from logs"
-
-    - id: "morpheus"
-      layer: "docker_world"
-      type: "resident_agent"
-      class: "memory_lifecycle"
-      responsibilities:
-        - "Consume logs and artifacts"
-        - "Consolidate memory"
-        - "Validate and prune memory candidates"
-        - "Support dreaming for marked workers"
-      logging:
-        must_log:
-          - "consolidation steps"
-          - "validation confidence"
-          - "pruning decisions"
-      constraints:
-        - "Must not mutate runtime authority boundaries"
+        - "Must not dispatch workers"
+        - "Must not terminate workers directly"
+        - "Must not replace Gaia"
+        - "Must not replace Supervisor"
+        - "Must not become part of normal task flow"
 
   ephemeral:
     - id: "johndoe"
       layer: "docker_world"
       type: "ephemeral_agent"
       class: "task_scoped_worker"
+      deployed_by: "Gaia"
+      terminated_by:
+        - "Supervisor"
+      terminate_requests_from:
+        - "Wilson"
       responsibilities:
-        - "Execute tasks"
-        - "Produce results"
+        - "Execute assigned tasks and produce results"
       logging:
         must_log:
           - "execution steps"
@@ -293,28 +303,114 @@ agents:
           - "outputs"
           - "escalation requests"
           - "failure states"
-      lifecycle:
-        rule: "A JohnDoe exists only while producing value."
-        termination_reasons:
-          - "no_progress"
-          - "loop_detected"
-          - "cost_exceeded"
-          - "task_completed"
       constraints:
-        - "Must remain short-lived"
-        - "Must not gain governance authority"
-        - "Must not gain long-term memory authority"
+        - "Must exist only while producing value"
+        - "Must remain operationally ephemeral"
+        - "Must be performance-gated"
+        - "Must not self-replicate"
+        - "Must not modify world laws"
+        - "Must follow lifecycle policy after dreaming: return to service, retire, or terminate."
+
+templates:
+  johndoe_templates:
+    - id: "johndoe_research_readonly"
+      description: "Read-only temporary worker for bounded research tasks."
+      scope:
+        can_read:
+          - "task_inputs"
+          - "approved_knowledge_sources"
+        can_write:
+          - "task_outputs"
+        can_execute:
+          - "reasoning"
+          - "summarization"
+        forbidden:
+          - "world_law_modification"
+          - "template_modification"
+          - "agent_spawning"
+      resources:
+        cpu: 1
+        memory_mb: 1024
+        gpu: 0
+        ttl_minutes: 60
+        token_budget: 30000
+
+    - id: "johndoe_data_transform"
+      description: "Temporary worker for bounded transformation of structured task data."
+      scope:
+        can_read:
+          - "task_inputs"
+        can_write:
+          - "task_outputs"
+        can_execute:
+          - "transformation"
+          - "formatting"
+          - "validation"
+        forbidden:
+          - "world_law_modification"
+          - "template_modification"
+          - "agent_spawning"
+      resources:
+        cpu: 1
+        memory_mb: 1024
+        gpu: 0
+        ttl_minutes: 45
+        token_budget: 20000
+
+    - id: "johndoe_summary_worker"
+      description: "Temporary worker for summarization and output packaging."
+      scope:
+        can_read:
+          - "task_inputs"
+        can_write:
+          - "task_outputs"
+        can_execute:
+          - "summarization"
+          - "packaging"
+        forbidden:
+          - "world_law_modification"
+          - "template_modification"
+          - "agent_spawning"
+      resources:
+        cpu: 1
+        memory_mb: 768
+        gpu: 0
+        ttl_minutes: 30
+        token_budget: 15000
 
 authority_matrix:
+  architect:
+    can:
+      - "modify_world_laws"
+      - "modify_templates"
+      - "modify_system_components"
+      - "assign_tasks_to_wilson"
+    cannot: []
+
   supervisor:
     can:
-      - "own_secrets"
-      - "inject_secrets_into_outbound_calls"
-      - "strip_secrets_from_responses"
-      - "enforce_external_call_boundaries"
-      - "terminate_workers"
+      - "manage_runtime"
     cannot:
       - "interpret_human_intent"
+
+  gaia:
+    can:
+      - "package_structured_tasks"
+      - "dispatch_work_to_johndoe"
+      - "maintain_current_task_ledger"
+      - "monitor_performance_and_cost_signals"
+    cannot:
+      - "interpret_human_intent"
+      - "invent_new_tasks"
+      - "reprioritize_outside_oracle_structure"
+      - "bypass_governance"
+
+  bill:
+    can:
+      - "evaluate_budget_token_and_compute_constraints"
+    cannot:
+      - "interpret_task_intent"
+      - "override_architect"
 
   wilson:
     can:
@@ -322,81 +418,70 @@ authority_matrix:
       - "write_uncleared_ledger"
       - "produce_human_readable_output"
     cannot:
-      - "execute_tasks"
-      - "mutate_raw_logs"
-
-  oracle:
-    can:
-      - "transform_uncleared_to_cleared_and_agile"
-      - "disambiguate_intent"
-      - "request_external_reasoning_through_governed_escalation"
-    cannot:
-      - "execute_tasks"
-      - "control_workers_directly"
-
-  gaia:
-    can:
-      - "assign_work_to_johndoe"
-      - "maintain_current_task_ledger"
-      - "mark_workers_for_dreaming_or_termination"
-    cannot:
-      - "invent_tasks"
-      - "override_governance"
+      - "dispatch_to_keyman"
+      - "request_normal_termination_as_control_path"
+      - "interpret_deeply_as_mandate_owner"
 
   keyman:
     can:
-      - "validate_secret_requests"
-      - "approve_or_deny_scope"
+      - "validate_secret_request_legitimacy"
+      - "validate_scope"
+      - "approve_or_deny_temporary_secret_usage"
     cannot:
+      - "request_johndoe_spawn_from_gaia"
+      - "delegate_knowledge_work_to_oracle"
       - "route_tasks"
       - "orchestrate_workflows"
-      - "execute_actions"
 
-  bill:
+  oracle:
     can:
-      - "evaluate_budget_and_cost"
+      - "transform_uncleared_and_cleared_into_structured_work"
+      - "prepare_agile_priorities"
+      - "request_reasoning_support_through_governed_path"
     cannot:
-      - "interpret_task_intent"
+      - "execute_tasks"
+      - "directly_control_workers"
+      - "bypass_governance"
 
   neo:
     can:
-      - "audit_logs"
-      - "escalate_anomalies"
+      - "audit_logs_and_ledgers"
+      - "detect_anomalies"
+      - "emit_escalation_signals"
+      - "request_governed_review"
     cannot:
-      - "execute_tasks"
-
-  morpheus:
-    can:
-      - "consolidate_memory_from_logs"
-      - "support_dreaming"
-    cannot:
-      - "change_world_laws"
-      - "execute_tasks"
+      - "dispatch_workers"
+      - "terminate_workers_directly"
+      - "rewrite_ledgers_directly_as_normal_behavior"
+      - "replace_orchestration"
+      - "act_as_normal_executor"
 
 event_flow:
   governed_orchestration:
     notes:
       - "This is a governed orchestration system, not a strict linear router."
       - "Logging is mandatory at every step."
+      - "Neo audits throughout the lifecycle by consuming logs and ledger mutations in parallel."
+      - "Neo emits governed findings when anomalies appear."
     steps:
       - step: 1
         actor: "Wilson"
-        action: "Receive Architect input and write Uncleared Ledger"
+        action: "Accept Architect input and write Uncleared Ledger"
       - step: 2
         actor: "Oracle"
-        action: "Transform Uncleared using Uncleared and Cleared as context, then write Cleared / Agile outputs"
+        action: "Transform Uncleared into Cleared + Agile using Uncleared and Cleared as context"
       - step: 3
         actor: "Gaia"
-        action: "Assign structured work to JohnDoe and maintain Current Task Ledger"
+        action: "Maintain Current Task Ledger and dispatch JohnDoe"
       - step: 4
         actor: "JohnDoe"
-        action: "Execute assigned task and emit progress and result logs"
+        action: "Execute tasks and produce results"
       - step: 5
-        actor: "Wilson"
-        action: "Present human-readable logs without mutating raw logs"
+        actor: "Morpheus"
+        action: "Perform dreaming, memory consolidation, or context reset for completed or marked workers"
       - step: 6
-        actor: "Neo"
-        action: "Audit the trace chain"
+        actor: "Supervisor"
+        action: "Perform final termination if lifecycle policy requires it"
 
   governed_escalation:
     notes:
@@ -407,48 +492,55 @@ event_flow:
         action: "Request escalation"
       - step: 2
         actor: "Oracle"
-        action: "Prepare reasoning escalation"
+        action: "Prepare escalation"
       - step: 3
         actor: "Keyman"
-        action: "Validate governed secret scope if needed"
+        action: "Validate secret scope if needed"
       - step: 4
         actor: "Bill"
-        action: "Evaluate token and cost allowance"
+        action: "Evaluate budget and token allowance"
       - step: 5
         actor: "Supervisor"
-        action: "Enforce boundary and issue external call"
+        action: "Enforce boundary and perform external call"
       - step: 6
-        actor: "External reasoning"
-        action: "Return reasoning result"
+        actor: "External reasoning (Advanced LLM: cloud or local)"
+        action: "Return result"
       - step: 7
         actor: "Supervisor"
-        action: "Return governed result to Oracle"
+        action: "Return governed result"
       - step: 8
         actor: "Oracle"
-        action: "Consume result and continue structured planning"
+        action: "Continue structured planning"
+
+contracts:
+  reclamation:
+    enabled: true
+    rule: "Task completion is not complete until Gaia records readiness and Morpheus performs dreaming or memory work; Supervisor performs final termination only if lifecycle policy requires it."
+    default_deadline_minutes_after_completion: 15
+    responsible_primary: "Gaia"
+    responsible_secondary: "Morpheus"
+    termination_executor: "Supervisor"
 
 logging:
   enabled: true
   sink: "event_log.jsonl"
-  immutable: true
-  encrypted: true
-  auditable: true
   required_events:
-    - "input_ingested"
-    - "ledger_written"
-    - "reasoning_decision"
-    - "prioritization_decision"
-    - "task_assignment"
-    - "worker_lifecycle_state"
-    - "execution_progress"
-    - "escalation_requested"
-    - "budget_evaluated"
-    - "secret_validated"
-    - "external_call_made"
-    - "secret_stripped"
-    - "termination_decision"
-    - "audit_finding"
-    - "memory_consolidated"
+    - "world_law_changed"
+    - "template_changed"
+    - "task_assigned"
+    - "agent_spawn_requested"
+    - "agent_spawned"
+    - "oracle_invoked"
+    - "external_reasoning_invoked"
+    - "task_completed"
+    - "completion_reported"
+    - "lifecycle_review_requested"
+    - "worker_dreamed"
+    - "worker_retired"
+    - "worker_returned_to_service"
+    - "agent_terminated"
+    - "neo_audit_started"
+    - "neo_audit_finding"
   minimum_fields:
     - "timestamp"
     - "agent_id"
@@ -463,7 +555,25 @@ logging:
     - "escalation_flag"
     - "error_state"
 
+audit_policy:
+  neo_audit:
+    enabled: true
+    schedule: "periodic"
+    targets:
+      - "logs"
+      - "ledgers"
+      - "trace_chains"
+      - "worker_persistence"
+    checks:
+      - "missing-log violations"
+      - "broken trace chains"
+      - "inconsistent ledger transitions"
+      - "abnormal persistence"
+      - "loop patterns"
+      - "stalk patterns"
+
 future_notes:
   v0_2_direction:
-    - "TECH_DEBT(PR22): runtime behavior may still lag this documentation alignment."
-    - "TECH_DEBT(PR22): supervisor/plugins/keyman_guardian/ description path is not present in this checkout; align plugin-facing description when that path exists."
+    - "Gaia should bootstrap the world from templates with minimal manual intervention."
+    - "Templates should become the canonical mechanism for agent creation."
+    - "World-law updates should remain human-sovereign and explicitly versioned."
