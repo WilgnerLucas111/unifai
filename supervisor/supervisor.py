@@ -89,6 +89,7 @@ ALLOW_CMDS = {
 
 def log(line: str):
     ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(f"{ts} {line}\n")
 
@@ -400,13 +401,121 @@ class SupervisorRuntime:
         conn.commit()
         return persistence_payload
 
+    def _resolve_tool_agent(self, mounted_spec: dict) -> str:
+        raw_agent = (
+            mounted_spec.get("agent")
+            or mounted_spec.get("requester")
+            or mounted_spec.get("actor")
+            or "unknown"
+        )
+        normalized = str(raw_agent).strip()
+        return normalized or "unknown"
+
+    def _resolve_tool_tokens(self, mounted_spec: dict, out: dict | None = None) -> int:
+        usage = mounted_spec.get("usage")
+        if isinstance(usage, dict):
+            total = usage.get("total_tokens")
+            if isinstance(total, int) and total >= 0:
+                return total
+
+        direct_tokens = mounted_spec.get("tokens")
+        if isinstance(direct_tokens, int) and direct_tokens >= 0:
+            return direct_tokens
+
+        if out is not None:
+            stdout = str(out.get("stdout", ""))
+            stderr = str(out.get("stderr", ""))
+            return max(0, len(stdout + stderr) // 4)
+
+        return 0
+
+    def _emit_tool_ledger(
+        self,
+        *,
+        task_id: int | str,
+        agent: str,
+        tool_name: str,
+        tokens: int,
+        status: str,
+        phase: str,
+        error: str | None = None,
+    ) -> None:
+        payload = {
+            "ledger": "tool_execution",
+            "phase": phase,
+            "task_id": str(task_id),
+            "agent": str(agent),
+            "tokens": int(max(0, tokens)),
+            "tool_name": str(tool_name),
+            "status": str(status),
+            "error": None if error is None else str(error),
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        log("tool_ledger " + json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+    def _run_tool_with_ledger(self, task_id: int | str, mounted_spec: dict, cmd: str, args: list[str]) -> dict:
+        agent = self._resolve_tool_agent(mounted_spec)
+        pre_tokens = self._resolve_tool_tokens(mounted_spec)
+
+        self._emit_tool_ledger(
+            task_id=task_id,
+            agent=agent,
+            tool_name=cmd,
+            tokens=pre_tokens,
+            status="started",
+            phase="pre",
+        )
+
+        try:
+            out = run_allowlisted(
+                cmd,
+                args,
+                task_id=str(task_id),
+                kill_registry=self.kill_registry,
+                fuse_manager=self.fuse_manager,
+            )
+        except Exception as error:
+            self._emit_tool_ledger(
+                task_id=task_id,
+                agent=agent,
+                tool_name=cmd,
+                tokens=pre_tokens,
+                status="failed",
+                phase="post",
+                error=str(error),
+            )
+            raise
+
+        post_tokens = self._resolve_tool_tokens(mounted_spec, out)
+        self._emit_tool_ledger(
+            task_id=task_id,
+            agent=agent,
+            tool_name=cmd,
+            tokens=post_tokens,
+            status="ok",
+            phase="post",
+        )
+        return out
+
     def execute_tool_task(self, task_id: int | str, mounted_spec: dict) -> dict:
-        cmd = mounted_spec.get("cmd")
-        args = mounted_spec.get("args", [])
+        cmd = str(mounted_spec.get("cmd", ""))
+        args_value = mounted_spec.get("args", [])
+        args = [str(arg) for arg in args_value] if isinstance(args_value, list) else [str(args_value)]
         envelope = self._build_tool_envelope(cmd, args, mounted_spec)
         decision = self.neo_pipeline.run_pre_hook(envelope)
+        agent = self._resolve_tool_agent(mounted_spec)
+        baseline_tokens = self._resolve_tool_tokens(mounted_spec)
 
         if decision.action == "block":
+            self._emit_tool_ledger(
+                task_id=task_id,
+                agent=agent,
+                tool_name=cmd,
+                tokens=baseline_tokens,
+                status="blocked_by_neo",
+                phase="pre",
+                error=decision.reason,
+            )
             log(f"neo_pre_hook action=block task_id={task_id} tool={cmd} reason={decision.reason}")
             return {
                 "error": f"Execution blocked by Neo: {decision.reason}",
@@ -419,6 +528,15 @@ class SupervisorRuntime:
                 reason=decision.reason,
                 grace_seconds=1,
             )
+            self._emit_tool_ledger(
+                task_id=task_id,
+                agent=agent,
+                tool_name=cmd,
+                tokens=baseline_tokens,
+                status="killed_by_neo",
+                phase="pre",
+                error=decision.reason,
+            )
             log(
                 "neo_pre_hook action=kill_now "
                 f"task_id={task_id} tool={cmd} reason={decision.reason} "
@@ -430,13 +548,7 @@ class SupervisorRuntime:
                 "fuse_result": trip_result,
             }
 
-        out = run_allowlisted(
-            cmd,
-            args,
-            task_id=str(task_id),
-            kill_registry=self.kill_registry,
-            fuse_manager=self.fuse_manager,
-        )
+        out = self._run_tool_with_ledger(task_id, mounted_spec, cmd, args)
         if self.neo:
             out["stdout"] = self.neo.sanitize_tool_output(cmd, str(out.get("stdout", "")))
         return out
