@@ -1,0 +1,3 @@
+[submodule "supervisor/secretvault"]
+	path = supervisor/secretvault
+	url = https://github.com/joustonhuang/supervisor-secretvault.git
