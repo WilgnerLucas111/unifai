@@ -25,8 +25,11 @@ This is the **Bill (budget gate)** world physics primitive applied to Claude API
 │  Oracle (agent)                                                      │
 │    │                                                                 │
 │    │  1. secretvault request --alias codex-oauth                    │
-│    │     → Keyman checks: is Oracle authorized?                     │
-│    │     → Keyman checks: is budget remaining?  ◄── Bill Gate       │
+│    │     → Keyman checks: is Oracle authorized? (secret gatekeeper) │
+│    │     → Keyman reads Bill fuse state before issuing grant        │
+│    │          Bill (budget gate) evaluates budget independently     │
+│    │          Bill writes bill_fuse.json if limit reached           │
+│    │          Keyman reads that fuse — denies if tripped            │
 │    │                                                                 │
 │    │  2. Grant issued → /grants/uuid.secret (TTL 300s)              │
 │    │                                                                 │
@@ -52,10 +55,11 @@ This is the **Bill (budget gate)** world physics primitive applied to Claude API
 │    │                                                                 │
 │    ├── Appends to usage ledger (SQLite: usage_events table)         │
 │    ├── Recalculates cumulative spend for current billing period     │
-│    └── If over budget → sets BILL_FUSE = tripped                    │
+│    └── If over budget → Bill writes BILL_FUSE = tripped             │
 │                              │                                       │
+│              Bill signals; Supervisor/Keyman reads fuse state       │
 │                              ▼                                       │
-│                        Keyman reads BILL_FUSE                       │
+│                        Keyman reads BILL_FUSE (on next grant req)   │
 │                        → denies all future codex-oauth requests     │
 │                        → Oracle cannot call Claude API              │
 │                        → User notified via Telegram + email         │
@@ -107,11 +111,16 @@ Updateable without code change.
 
 ---
 
-## Bill Gate Logic (inside Keyman)
+## Keyman Fuse Check (reads Bill's state before issuing grant)
+
+Bill (the budget gate primitive) independently evaluates spend and writes
+the fuse state. Keyman reads that state before issuing any grant — it does
+not compute budget itself. Authority separation: Bill signals, Keyman gates.
 
 ```python
 def check_bill_gate(self, alias: str) -> dict:
-    """Called before issuing any codex-oauth grant."""
+    """Read Bill's fuse state before issuing a codex-oauth grant.
+    Bill writes bill_fuse.json; Keyman only reads it."""
     if alias != "codex-oauth":
         return {"gate_open": True}
 

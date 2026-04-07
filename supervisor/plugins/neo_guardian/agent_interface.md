@@ -7,6 +7,13 @@ Inside the Agent environment (e.g. OpenClaw), Neo acts functionally as a **senso
 - **Authority:** NONE. Cannot kill tasks, delete agents, or modify rules.
 - **Output:** Structured signals passed back to the Supervisor via JSON.
 
+**Enforcement boundary (important):**
+Neo emits findings. Supervisor (world_physics) is the sole entity that evaluates
+those findings and decides whether to execute a hard block, kill, or quarantine.
+Neo's `deny_recommendation` and `quarantine_recommendation` signal types are
+advisory outputs — they are not executable commands. No agent or component
+other than Supervisor may act on Neo signals as if they were enforcement orders.
+
 ## 2. Prompt Contract (The Watcher Persona)
 This prompt establishes Neo's boundaries inside the agent loop before evaluating a task:
 

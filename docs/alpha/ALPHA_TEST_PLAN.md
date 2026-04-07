@@ -113,9 +113,10 @@ Why this matters: Life admin decisions are low-excitement, high-impact, and extr
 ---
 
 **What happens under the hood:**
-- Wilson interprets the task and records it in the task ledger
-- Keyman maintains uncleared and cleared ledger entries, routes to OpenClaw's Oracle (cloud LLM)
-- Neo monitors the entire run for anomalies. As warning levels escalate, Supervisor may trigger the World Physics kill switch — logs the incident, restarts the agent with full failure context, and reports to the user
+- Wilson accepts the task and writes it to the Uncleared Ledger
+- Oracle structures the work, selects Agile priorities, and issues an execution plan to Gaia
+- Gaia dispatches JohnDoe to execute; Keyman validates any secret access requests during execution (secret gatekeeper only — not a task router)
+- Neo monitors the entire run for anomalies by auditing logs and ledger mutations. When Neo emits escalation findings, Supervisor evaluates them and may trigger the World Physics kill switch — logs the incident and reports to the user
 - Results delivered to Telegram and email when complete
 
 **The architectural difference — why ChatGPT cannot do this:**
