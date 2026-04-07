@@ -44,8 +44,10 @@ little7-installer/config/active_models.yml
 *.env
 .env.*
 
+# supervisor-secretvault is a git submodule — tracked as a pointer, not content
+!/supervisor/supervisor-secretvault
 /supervisor/supervisor-secretvault/*
-/supervisor/supervisor-secretvault/
+!/supervisor/supervisor-secretvault/.git
 
 # =========================
 # Local testing artifacts
