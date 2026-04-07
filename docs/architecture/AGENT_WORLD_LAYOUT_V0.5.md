@@ -162,28 +162,70 @@ No authority.
 ### 2.7 Morpheus (Dream Machine)
 
 - write-only
-- no influence
+- no execution authority
 
 Role:
-- pre-termination capture
+- post-execution lifecycle step (not pre-termination capture)
+- reclamation contract responsible_secondary (with Gaia as primary)
 
-Behavior:
-- receives execution trace
-- logs final state
-- bounded time
+Dreaming = Memory Consolidation + Context Reset (unified operation):
+- compress and store execution trace
+- reset context window to baseline
+- write worker_dreamed log event
 
-Constraint:
-- bypassable by world_physics under failure. world_physics will need to write log by its own.
+Trigger timing — two independent paths:
+
+**JohnDoe path:**
+- triggered by: task_completed log event
+- scope: individual agent only
+- Morpheus detects task_completed → requests that specific JohnDoe to dream
+- deadline: 15 minutes from task_completed
+- on completion: write worker_dreamed → JohnDoe released to Gaia for reassignment
+
+**Resident agent path (Neo, Wilson, Oracle, etc.):**
+- triggered by: any resident agent context window ≥ 80–90%
+- scope: ALL non-JohnDoe agents pause simultaneously
+- collective dreaming — all resident agents compress and reset together
+- resumes normal operation after dreaming completes
+
+Deadline:
+- Morpheus must complete JohnDoe dreaming within 15 minutes of task_completed
+- timeout → Supervisor TTL sweep reclaims agent, status: reclaimed_dream_timeout
+
+Kill Switch / Fuse bypass:
+- when Supervisor activates Kill Switch or Fuse mechanism:
+  - log activation reason only
+  - dreaming is skipped entirely
+  - agent status marked: killed_without_dream
+- Kill Switch / Fuse priority overrides dreaming contract
+- Morpheus takes no action; no compensating log is written by world_physics
 
 ---
 
 ## 3. JohnDoe
 
 Lifecycle:
-1. spawn
+1. spawn (by Gaia, from Oracle plan)
 2. execute
-3. dream (Morpheus)
-4. die
+3. task_completed log written
+4. dream (Morpheus — within 15 min deadline)
+5. worker_dreamed log written → JohnDoe released
+6. Gaia evaluates: new task available?
+   - yes → assign new task, return to step 2
+   - no  → write agent_recyclable log
+7. Supervisor GC reclaims agent
+
+Garbage Collection schedule:
+- primary: event-driven (agent_recyclable log triggers immediate reclaim)
+- safety sweep: every 5 minutes (reclaims any stuck recyclable agents)
+- TTL enforcement: every 15 minutes (reclaims agents past TTL or dream timeout)
+
+Status values:
+- running → task in progress
+- dreamed → dreaming complete, awaiting Gaia decision
+- recyclable → no task available, pending GC
+- killed_without_dream → terminated by Kill Switch or Fuse (no dreaming)
+- reclaimed_dream_timeout → Morpheus deadline exceeded, force-reclaimed by Supervisor
 
 ---
 
