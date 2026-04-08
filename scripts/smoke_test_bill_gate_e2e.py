@@ -55,6 +55,7 @@ def main() -> int:
                     {
                         "type": "llm",
                         "prompt": long_prompt,
+                        "trace_id": "smoke-bill-gate-e2e-trace",
                     },
                     ensure_ascii=False,
                 ),

@@ -64,6 +64,7 @@ def _run_case(case_name: str, provider) -> int:
                     {
                         "type": "llm",
                         "prompt": "adversarial stream",
+                        "trace_id": "smoke-bill-truncated-trace",
                     },
                     ensure_ascii=False,
                 ),

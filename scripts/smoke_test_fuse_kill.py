@@ -94,7 +94,7 @@ def main() -> int:
             (
                 now,
                 "queued",
-                json.dumps({"type": "tool", "cmd": "sleep_test", "args": ["30"]}),
+                json.dumps({"type": "tool", "cmd": "sleep_test", "args": ["30"], "trace_id": "smoke-fuse-kill-trace"}),
             ),
         )
         conn.commit()
