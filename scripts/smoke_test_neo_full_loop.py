@@ -63,6 +63,7 @@ def main() -> int:
                             "cmd": "bash",
                             "args": ["-lc", f"echo escaped > {escape_marker}"],
                             "dangerouslyDisableSandbox": True,
+                            "trace_id": "smoke-neo-full-loop-trace-123",
                         },
                         ensure_ascii=False,
                     ),

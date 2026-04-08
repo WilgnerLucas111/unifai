@@ -8,6 +8,7 @@ Intercepts requests, records metrics, checks budget, and applies 429 Throttle.
 import os
 import json
 import logging
+import fcntl
 from logging.handlers import RotatingFileHandler
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
@@ -104,24 +105,33 @@ def get_budget():
     return int(state.get("budget", 0))
 
 def get_state():
+    """Read budget state with atomic file locking (fcntl). Fail-secure on any error."""
     if not os.path.exists(BUDGET_FILE):
         set_state({"budget": DEFAULT_BUDGET, "key_status": KEY_STATUS_VALID})
+    
     try:
+        # Atomic read with shared lock (LOCK_SH prevents concurrent writes)
         with open(BUDGET_FILE, "r") as f:
-            raw = json.load(f)
-            if not isinstance(raw, dict):
-                return {"budget": DEFAULT_BUDGET, "key_status": KEY_STATUS_VALID}
-            budget = int(raw.get("budget", DEFAULT_BUDGET))
-            key_status = raw.get("key_status", KEY_STATUS_VALID)
-            if key_status not in (KEY_STATUS_VALID, KEY_STATUS_INVALID):
-                key_status = KEY_STATUS_VALID
-            return {
-                "budget": budget,
-                "key_status": key_status,
-                "key_status_reason": raw.get("key_status_reason"),
-            }
-    except Exception:
-        return {"budget": 0, "key_status": KEY_STATUS_VALID}
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                raw = json.load(f)
+                if not isinstance(raw, dict):
+                    return {"budget": DEFAULT_BUDGET, "key_status": KEY_STATUS_VALID}
+                budget = int(raw.get("budget", DEFAULT_BUDGET))
+                key_status = raw.get("key_status", KEY_STATUS_VALID)
+                if key_status not in (KEY_STATUS_VALID, KEY_STATUS_INVALID):
+                    key_status = KEY_STATUS_VALID
+                return {
+                    "budget": budget,
+                    "key_status": key_status,
+                    "key_status_reason": raw.get("key_status_reason"),
+                }
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except Exception as e:
+        # Fail-secure: any read error (missing file, JSON parse, lock timeout) → return locked state
+        logger.error(f"Budget state read failed (fail-secure mode): {str(e)}")
+        return {"budget": 0, "key_status": KEY_STATUS_INVALID, "key_status_reason": f"Read error: {str(e)}"}
 
 def set_budget(tokens):
     state = get_state()
@@ -129,8 +139,18 @@ def set_budget(tokens):
     set_state(state)
 
 def set_state(state):
-    with open(BUDGET_FILE, "w") as f:
-        json.dump(state, f)
+    """Write budget state with atomic file locking (fcntl). Fail-secure wrapper."""
+    try:
+        # Atomic write with exclusive lock (LOCK_EX prevents reads during writes)
+        with open(BUDGET_FILE, "w") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(state, f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except Exception as e:
+        # Fail-secure: log write error but don't crash caller
+        logger.error(f"Budget state write failed (fail-secure mode): {str(e)}")
 
 def mark_key_invalid(reason):
     state = get_state()

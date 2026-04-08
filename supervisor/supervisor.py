@@ -581,6 +581,29 @@ class SupervisorRuntime:
             spec = json.loads(row["spec"])
             mounted_spec = self.prepare_task_spec(spec)
 
+            # GOVERNANCE V0.3: Mandatory trace_id validation (fail-fast enforcement)
+            trace_id = None
+            if isinstance(mounted_spec, dict):
+                trace_id = mounted_spec.get("trace_id")
+            
+            if not trace_id or not str(trace_id).strip():
+                error_msg = "MISSING_TRACE_ID: Supervisor requires 'trace_id' in task spec for audit invariant"
+                interpret_and_record_incident(
+                    conn,
+                    task_id,
+                    mounted_spec,
+                    "pre_execution",
+                    error=error_msg,
+                    metadata={"missing_field": "trace_id", "validation_layer": "governance_v0.3"}
+                )
+                log(f"task {task_id} {error_msg}")
+                conn.execute(
+                    "UPDATE tasks SET status='failed', error=? WHERE id=?",
+                    (error_msg, task_id)
+                )
+                conn.commit()
+                return True
+
             if self.neo:
                 neo_eval = self.neo.analyze_task_spec(mounted_spec)
                 if not neo_eval["is_safe"]:
