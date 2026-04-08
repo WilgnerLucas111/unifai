@@ -54,48 +54,74 @@ class KeymanGuardian:
     def evaluate_capability_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Core authorization logic. Maps request to response following the JSON Contract.
+        DENY-by-default: Any missing mandatory fields or errors → block_task decision (fail-secure).
+        All denials are threat signals routed to Neo per Rule 6.
         """
-        requester = request.get("agent", "unknown")
-        secret_alias = request.get("alias", "unknown")
-        ttl_requested = request.get("ttl_seconds", 300)
-        request_id = request.get("request_id")
-        
-        # Validate request structure
-        if not request_id:
-            request_id = str(uuid.uuid4())
-        
-        # Check basic permissions
-        allowed_caps = self.role_permissions.get(requester, [])
-        
-        if secret_alias not in allowed_caps:
-            # Unauthorized access detected
-            decision = "block_task"
-            is_authorized = False
-            reason = f"Role {requester} is not authorized for capability {secret_alias}"
+        try:
+            # Mandatory field validation (DENY-by-default per Keyman SKILL section 8)
+            request_id = request.get("request_id")
+            if not request_id:
+                request_id = str(uuid.uuid4())
             
-            # Escalate to quarantine if probing high-risk capability
-            if secret_alias in self.high_risk_capabilities:
-                decision = "quarantine"
-                reason = f"THREAT_DETECTED: {requester} attempted unauthorized high-risk access to {secret_alias}"
+            requester = request.get("agent")
+            secret_alias = request.get("alias")
             
+            # Missing mandatory fields → immediate DENY
+            if not requester or not secret_alias:
+                return {
+                    "approved": False,
+                    "decision": "block_task",
+                    "reason": "Malformed request: missing mandatory fields (agent, alias)",
+                    "ttl_seconds": 0,
+                    "request_id": request_id
+                }
+            
+            ttl_requested = request.get("ttl_seconds", 300)
+        
+            # Check basic permissions
+            allowed_caps = self.role_permissions.get(requester, [])
+            
+            if secret_alias not in allowed_caps:
+                # Unauthorized access detected → DENY
+                decision = "block_task"
+                is_authorized = False
+                reason = f"Role {requester} is not authorized for capability {secret_alias}"
+                
+                # Escalate to quarantine if probing high-risk capability
+                if secret_alias in self.high_risk_capabilities:
+                    decision = "quarantine"
+                    reason = f"THREAT_DETECTED: {requester} attempted unauthorized high-risk access to {secret_alias}"
+                
+                return {
+                    "approved": False,
+                    "decision": decision,
+                    "reason": reason,
+                    "ttl_seconds": 0,
+                    "request_id": request_id,
+                }
+            
+            # Authorized! Issue grant with bounded TTL
+            # Ensure minimum 1 second, maximum 3600 seconds (1 hour)
+            approved_ttl = max(1, min(ttl_requested, 3600))
             return {
-                "approved": False,
-                "decision": decision,
-                "reason": reason,
-                "ttl_seconds": 0,
+                "approved": True,
+                "decision": "issue_grant",
+                "reason": f"Authorized: {requester} can access {secret_alias}",
+                "ttl_seconds": approved_ttl,
                 "request_id": request_id,
             }
         
-        # Authorized! Issue grant with bounded TTL
-        # Ensure minimum 1 second, maximum 3600 seconds (1 hour)
-        approved_ttl = max(1, min(ttl_requested, 3600))
-        return {
-            "approved": True,
-            "decision": "issue_grant",
-            "reason": f"Authorized: {requester} can access {secret_alias}",
-            "ttl_seconds": approved_ttl,
-            "request_id": request_id,
-        }
+        except Exception as e:
+            # Any error during authorization evaluation → DENY by default (fail-secure)
+            # Per SKILL keyman section 8: Malformed input handling → block_task
+            request_id = request.get("request_id", str(uuid.uuid4()))
+            return {
+                "approved": False,
+                "decision": "block_task",
+                "reason": f"Authorization evaluation failed (fail-secure): {str(e)}",
+                "ttl_seconds": 0,
+                "request_id": request_id
+            }
 
 
 class KeymanCLI:
