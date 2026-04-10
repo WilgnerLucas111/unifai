@@ -29,6 +29,10 @@ import os
 import subprocess
 from pathlib import Path
 
+# Import the Governance Policy Engine
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+from governance.policy_engine import GovernancePolicyEngine
+
 
 class KeymanGuardian:
     """
@@ -58,24 +62,27 @@ class KeymanGuardian:
         All denials are threat signals routed to Neo per Rule 6.
         """
         try:
-            # Mandatory field validation (DENY-by-default per Keyman SKILL section 8)
+            # Use the Governance Policy Engine to validate mandatory conditions
+            engine = GovernancePolicyEngine()
+            missing_conditions = engine.get_missing_keyman_conditions(request)
+            
             request_id = request.get("request_id")
             if not request_id:
                 request_id = str(uuid.uuid4())
             
-            requester = request.get("agent")
-            secret_alias = request.get("alias")
-            
-            # Missing mandatory fields → immediate DENY
-            if not requester or not secret_alias:
+            # If any mandatory conditions are missing, DENY immediately (fail-secure)
+            if missing_conditions:
                 return {
                     "approved": False,
                     "decision": "block_task",
-                    "reason": "Malformed request: missing mandatory fields (agent, alias)",
+                    "reason": f"Keyman preconditions not met: {missing_conditions}",
                     "ttl_seconds": 0,
                     "request_id": request_id
                 }
             
+            # Extract validated fields
+            requester = request.get("agent")
+            secret_alias = request.get("alias")
             ttl_requested = request.get("ttl_seconds", 300)
         
             # Check basic permissions

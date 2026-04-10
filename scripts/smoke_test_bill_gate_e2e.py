@@ -56,6 +56,8 @@ def main() -> int:
                         "type": "llm",
                         "prompt": long_prompt,
                         "trace_id": "smoke-bill-gate-e2e-trace",
+                        "architect_instruction": "approved-for-smoke-test",
+                        "ledger_entry": {"incident_id": "smoke-bill-001"},
                     },
                     ensure_ascii=False,
                 ),

@@ -13,6 +13,8 @@ import sys
 
 from oracle.oracle import IncidentInput, OracleIncidentInterpreter
 
+from governance.policy_engine import GovernancePolicyEngine
+
 # Importa o Plugin do Neo Guardian
 # Adiciona o diretório atual ao sys.path para garantir que os plugins sejam encontrados
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -367,6 +369,7 @@ class SupervisorRuntime:
         self.neo_pipeline = neo_pipeline if neo_pipeline is not None else ToolHookPipeline()
         self.bill_gate = bill_gate if bill_gate is not None else BillGate(BudgetConfig(max_tokens=100000, max_usd=5.0))
         self.provider_adapter = provider_adapter if provider_adapter is not None else MockProvider()
+        self.governance_engine = GovernancePolicyEngine()
 
     def trip_agent(self, task_id: int | str, reason: str, grace_seconds: int = 2) -> dict:
         """Expose process kill path for Neo-triggered immediate containment."""
@@ -581,20 +584,17 @@ class SupervisorRuntime:
             spec = json.loads(row["spec"])
             mounted_spec = self.prepare_task_spec(spec)
 
-            # GOVERNANCE V0.3: Mandatory trace_id validation (fail-fast enforcement)
-            trace_id = None
-            if isinstance(mounted_spec, dict):
-                trace_id = mounted_spec.get("trace_id")
-            
-            if not trace_id or not str(trace_id).strip():
-                error_msg = "MISSING_TRACE_ID: Supervisor requires 'trace_id' in task spec for audit invariant"
+            # GOVERNANCE V0.3: Use policy engine to validate execution preconditions
+            missing_preconditions = self.governance_engine.get_missing_execution_preconditions(mounted_spec)
+            if missing_preconditions:
+                error_msg = f"EXECUTION_PRECONDITIONS_FAILED: Missing fields {missing_preconditions} required by Constitution v0.3"
                 interpret_and_record_incident(
                     conn,
                     task_id,
                     mounted_spec,
                     "pre_execution",
                     error=error_msg,
-                    metadata={"missing_field": "trace_id", "validation_layer": "governance_v0.3"}
+                    metadata={"missing_fields": missing_preconditions, "validation_layer": "governance_policy_engine"}
                 )
                 log(f"task {task_id} {error_msg}")
                 conn.execute(
