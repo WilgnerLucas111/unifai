@@ -57,14 +57,19 @@ if [ ! -f "${OPENCLAW_CONFIG}" ]; then
   cat > "${OPENCLAW_CONFIG}" <<'EOF'
 // UnifAI-governed OpenClaw configuration
 // API keys are NOT stored here — they are injected at runtime via World Physics SecretVault.
+// Active provider is detected at startup by openclaw-start (openai-oauth first, codex-oauth fallback).
 {
   models: {
     providers: {
-      anthropic: {
-        // apiKey is intentionally absent — injected via ANTHROPIC_API_KEY env var
+      openai: {
+        // apiKey is intentionally absent — injected via OPENAI_API_KEY env var
+        // baseURL is intentionally absent — injected via OPENAI_BASE_URL env var (Bill Proxy)
       },
+      // Future providers (keys injected at runtime when seeded):
+      // anthropic: {},   // Claude — seed via: node cli.js seed --alias codex-oauth
+      // google: {},      // Gemini — future
     },
-    default: "claude-sonnet-4-6",
+    default: "codex-mini-latest",   // OpenAI Codex — Alpha Phase default
   },
   channels: {
     telegram: {
@@ -87,8 +92,8 @@ sudo mkdir -p "${DST_BASE}/bin"
 
 sudo tee "${OPENCLAW_LAUNCHER}" >/dev/null <<'LAUNCHER'
 #!/usr/bin/env bash
-# openclaw-start — World Physics injection wrapper
-# Retrieves API key from SecretVault, injects into OpenClaw as env var.
+# openclaw-start — World Physics injection wrapper (provider-aware)
+# Resolves active LLM provider from SecretVault, injects API key + routing vars.
 # The key is NEVER written to disk outside the SecretVault grant mechanism.
 set -euo pipefail
 
@@ -106,18 +111,59 @@ fi
 
 MASTER_KEY="$(cat "$MASTER_KEY_FILE")"
 
-# Request the codex-oauth grant from SecretVault
-# This call goes through Keyman for authorisation.
-echo "[openclaw-start] Requesting codex-oauth grant from SecretVault..."
-GRANT_JSON="$(SECRETVAULT_MASTER_KEY="$MASTER_KEY" node "$SV_CLI" request \
-  --alias codex-oauth \
+# -----------------------------------------------------------------------
+# Provider probe: try OpenAI Codex first (Alpha Phase default),
+# then fall back to Anthropic Claude. Extend this block for future
+# providers (Gemini, NemoClaw, OpenCode) by adding probe branches below.
+# -----------------------------------------------------------------------
+ACTIVE_PROVIDER=""
+GRANT_JSON=""
+
+echo "[openclaw-start] Probing available providers via SecretVault..."
+
+# Probe 1: OpenAI Codex (primary for Alpha Phase)
+PROBE_OAI="$(SECRETVAULT_MASTER_KEY="$MASTER_KEY" node "$SV_CLI" request \
+  --alias openai-oauth \
   --purpose "openclaw-startup" \
   --agent oracle \
-  --ttl 3600 2>&1)"
+  --ttl 3600 2>&1)" || true
 
-if ! echo "$GRANT_JSON" | grep -q '"ok":true'; then
-  echo "[ERROR] SecretVault denied codex-oauth request:" >&2
-  echo "$GRANT_JSON" >&2
+if echo "$PROBE_OAI" | grep -q '"ok":true'; then
+  ACTIVE_PROVIDER="openai"
+  GRANT_JSON="$PROBE_OAI"
+  echo "[openclaw-start] Provider: OpenAI Codex (openai-oauth)"
+fi
+
+# Probe 2: Anthropic Claude (fallback)
+if [ -z "$ACTIVE_PROVIDER" ]; then
+  PROBE_ANT="$(SECRETVAULT_MASTER_KEY="$MASTER_KEY" node "$SV_CLI" request \
+    --alias codex-oauth \
+    --purpose "openclaw-startup" \
+    --agent oracle \
+    --ttl 3600 2>&1)" || true
+
+  if echo "$PROBE_ANT" | grep -q '"ok":true'; then
+    ACTIVE_PROVIDER="anthropic"
+    GRANT_JSON="$PROBE_ANT"
+    echo "[openclaw-start] Provider: Anthropic Claude (codex-oauth) [fallback]"
+  fi
+fi
+
+# Future Probe 3: Gemini — uncomment when supported
+# if [ -z "$ACTIVE_PROVIDER" ]; then
+#   PROBE_GEM="$(SECRETVAULT_MASTER_KEY="$MASTER_KEY" node "$SV_CLI" request \
+#     --alias gemini-oauth --purpose "openclaw-startup" --agent oracle --ttl 3600 2>&1)" || true
+#   if echo "$PROBE_GEM" | grep -q '"ok":true'; then
+#     ACTIVE_PROVIDER="gemini"; GRANT_JSON="$PROBE_GEM"
+#   fi
+# fi
+
+if [ -z "$ACTIVE_PROVIDER" ]; then
+  echo "[ERROR] No provider available in SecretVault. Seed a key first:" >&2
+  echo "  # OpenAI Codex (primary):" >&2
+  echo "  node $SV_CLI seed --alias openai-oauth --value 'YOUR_OPENAI_KEY'" >&2
+  echo "  # Anthropic Claude (fallback):" >&2
+  echo "  node $SV_CLI seed --alias codex-oauth --value 'YOUR_ANTHROPIC_KEY'" >&2
   exit 2
 fi
 
@@ -130,15 +176,32 @@ fi
 
 BILL_PROXY_PORT="${BILL_PROXY_PORT:-7701}"
 
-echo "[openclaw-start] Grant received. Starting OpenClaw with injected key..."
+echo "[openclaw-start] Injecting $ACTIVE_PROVIDER credentials. Starting OpenClaw..."
 
-# Hardcore Anti-Leak: Disable core dumps physically at OS level so crashed processes 
-# never bleed the ANTHROPIC_API_KEY to /var/crash
+# Hardcore Anti-Leak: Disable core dumps at OS level so crashes never bleed API keys
 ulimit -c 0
 
-# Launch OpenClaw — key lives only in the process env for this command, never in a config file
-# We inject the Odometer Proxy (Bill) via ANTHROPIC_BASE_URL to intercept network fuel.
-exec env BILL_PROXY_PORT="$BILL_PROXY_PORT" ANTHROPIC_BASE_URL="http://127.0.0.1:${BILL_PROXY_PORT}" ANTHROPIC_API_KEY="$(cat "$GRANT_PATH")" openclaw gateway "$@"
+# Launch OpenClaw with provider-specific env injection.
+# UNIFAI_PROVIDER tells Bill Proxy which upstream URL + token format to use.
+# The API key lives ONLY in the process env, never in a config file.
+if [ "$ACTIVE_PROVIDER" = "openai" ]; then
+  exec env \
+    UNIFAI_PROVIDER="openai" \
+    BILL_PROXY_PORT="$BILL_PROXY_PORT" \
+    OPENAI_BASE_URL="http://127.0.0.1:${BILL_PROXY_PORT}" \
+    OPENAI_API_KEY="$(cat "$GRANT_PATH")" \
+    openclaw gateway "$@"
+elif [ "$ACTIVE_PROVIDER" = "anthropic" ]; then
+  exec env \
+    UNIFAI_PROVIDER="anthropic" \
+    BILL_PROXY_PORT="$BILL_PROXY_PORT" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:${BILL_PROXY_PORT}" \
+    ANTHROPIC_API_KEY="$(cat "$GRANT_PATH")" \
+    openclaw gateway "$@"
+else
+  echo "[ERROR] Provider '$ACTIVE_PROVIDER' not wired for env injection." >&2
+  exit 4
+fi
 LAUNCHER
 
 sudo chmod 0750 "${OPENCLAW_LAUNCHER}"
@@ -159,8 +222,10 @@ echo
 echo "== Stage 50 complete =="
 echo "  OpenClaw installed and configured."
 echo "  API key will be injected at runtime via: ${OPENCLAW_LAUNCHER}"
-echo "  To seed the API key (simulating WebUI):"
+echo "  To seed a provider key:"
 echo "    SECRETVAULT_MASTER_KEY=\$(sudo cat /etc/little7/secretvault_master.key) \\"
-echo "    node ${SV_INSTALL}/src/cli.js seed --alias codex-oauth --value 'YOUR_API_KEY'"
+echo "    node ${SV_INSTALL}/src/cli.js seed --alias openai-oauth --value 'YOUR_OPENAI_KEY'"
+echo "    # or Anthropic fallback:"
+echo "    node ${SV_INSTALL}/src/cli.js seed --alias codex-oauth --value 'YOUR_ANTHROPIC_KEY'"
 echo "  Then start OpenClaw with:"
 echo "    ${OPENCLAW_LAUNCHER}"

@@ -19,7 +19,27 @@ import subprocess
 BUDGET_FILE = "/tmp/unifai_budget.json"
 DEFAULT_BUDGET = 1000
 DEFAULT_PROXY_PORT = 7701
-ANTHROPIC_REAL_URL = "https://api.anthropic.com"
+
+# Provider registry — add new providers here as they are supported.
+# Alpha Phase: OpenAI Codex only.
+# Future: "anthropic", "gemini", "nemo" (NemoClaw), "opencode"
+PROVIDER_REGISTRY = {
+    "openai": {
+        "base_url": "https://api.openai.com",
+        # OpenAI chat completions usage object fields
+        "token_fields": ("prompt_tokens", "completion_tokens"),
+    },
+    # "anthropic": {
+    #     "base_url": "https://api.anthropic.com",
+    #     "token_fields": ("input_tokens", "output_tokens"),
+    # },
+    # "gemini": {
+    #     "base_url": "https://generativelanguage.googleapis.com",
+    #     "token_fields": ("promptTokenCount", "candidatesTokenCount"),
+    # },
+}
+DEFAULT_PROVIDER = "openai"
+
 KEY_STATUS_VALID = "VALID"
 KEY_STATUS_INVALID = "INVALID"
 CRITICAL_KEY_ALERT = "🚨 UNIF_AI CRITICAL: API Key Revoked/Expired. Keyman intervention required."
@@ -36,8 +56,9 @@ try:
 except PermissionError:
     SHADOW_LOG = "/tmp/unifai_shadow.log"
 
-# Anti-pattern redaction (split strings to avoid git hook collision on commit)
-SENSITIVE_PATTERN = re.compile(r"(sk-" + r"ant-[\w-]+)")
+# Anti-pattern redaction (split strings to avoid git hook collision on commit).
+# Matches Anthropic keys (sk-ant-...) and OpenAI keys (sk-proj-... / sk-...).
+SENSITIVE_PATTERN = re.compile(r"(sk-" + r"(?:ant-|proj-)?[\w-]{16,})")
 
 class RedactionFilter(logging.Filter):
     """Intercepts all logs and obliterates leaked API keys."""
@@ -75,6 +96,16 @@ def resolve_proxy_port():
         return DEFAULT_PROXY_PORT
 
 PROXY_PORT = resolve_proxy_port()
+
+def resolve_provider() -> str:
+    """Determine the active LLM provider from UNIFAI_PROVIDER env var (set by openclaw-start)."""
+    p = os.getenv("UNIFAI_PROVIDER", DEFAULT_PROVIDER).lower()
+    if p not in PROVIDER_REGISTRY:
+        return DEFAULT_PROVIDER
+    return p
+
+ACTIVE_PROVIDER = resolve_provider()
+REAL_URL = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["base_url"]
 
 
 class BillGuardian:
@@ -247,7 +278,7 @@ class BillProxyHandler(BaseHTTPRequestHandler):
             response_body = json.dumps({"error": "simulated-upstream-status"}).encode("utf-8")
             response_headers = {"Content-Type": "application/json"}
         else:
-            target_url = f"{ANTHROPIC_REAL_URL}{self.path}"
+            target_url = f"{REAL_URL}{self.path}"
             req = urllib.request.Request(target_url, data=post_data, headers=req_headers, method="POST")
 
             # Network transmission (The Real World hook)
@@ -265,7 +296,7 @@ class BillProxyHandler(BaseHTTPRequestHandler):
                 send_json(self, 502, {
                     "error": {
                         "type": "upstream_error",
-                        "message": "Anthropic upstream unreachable",
+                        "message": f"{ACTIVE_PROVIDER} upstream unreachable",
                     }
                 })
                 return
@@ -293,7 +324,8 @@ class BillProxyHandler(BaseHTTPRequestHandler):
             try:
                 body_json = json.loads(safe_response_body)
                 if "usage" in body_json:
-                    cost = body_json["usage"].get("input_tokens", 0) + body_json["usage"].get("output_tokens", 0)
+                    t_in, t_out = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["token_fields"]
+                    cost = body_json["usage"].get(t_in, 0) + body_json["usage"].get(t_out, 0)
             except Exception:
                 pass
 
@@ -332,7 +364,7 @@ def run_self_test() -> None:
 
 
 def main() -> None:
-    logger.info(f"Starting unseen UnifAI Bill Proxy on port {PROXY_PORT}...")
+    logger.info(f"Starting unseen UnifAI Bill Proxy on port {PROXY_PORT} [provider: {ACTIVE_PROVIDER}]...")
     state = get_state()
     state["budget"] = int(state.get("budget", DEFAULT_BUDGET))
     if state.get("key_status") not in (KEY_STATUS_VALID, KEY_STATUS_INVALID):
