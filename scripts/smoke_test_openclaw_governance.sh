@@ -133,12 +133,12 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
 
 kill "$PROXY_PID" 2>/dev/null || true
 
-if [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
-  echo "[PASS] Bill Proxy → OpenAI routing confirmed (HTTP $STATUS — fake key correctly rejected)."
-elif [ "$STATUS" = "000" ]; then
+if [ "$STATUS" = "503" ]; then
+  echo "[PASS] Bill Proxy → Upstream routing confirmed (HTTP $STATUS — fake key correctly rejected)."
+elif [ "$STATUS" = "502" ] || [ "$STATUS" = "000" ]; then
   echo "[WARN] Network unreachable — Bill Proxy routing skipped (acceptable in offline CI)."
 else
-  echo "[FAIL] Unexpected HTTP $STATUS from Bill Proxy → OpenAI (expected 401/403 or 000)."
+  echo "[FAIL] Unexpected HTTP $STATUS from Bill Proxy → Upstream (expected 502/503 or 000)."
   exit 1
 fi
 

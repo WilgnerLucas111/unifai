@@ -45,7 +45,7 @@ class KeymanGuardian:
         self.role_permissions = {
             "research_agent": ["web_search", "repo_access"],
             "github_agent": ["repo_access"],
-            "admin_agent": ["web_search", "repo_access", "database_rw", "codex-oauth"],
+            "admin_agent": ["web_search", "repo_access", "database_rw", "openai-oauth", "codex-oauth"],
         }
         
         # Ultra-sensitive operations (probing guard)

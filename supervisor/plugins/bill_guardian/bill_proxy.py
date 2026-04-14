@@ -25,18 +25,19 @@ DEFAULT_PROXY_PORT = 7701
 # Future: "anthropic", "gemini", "nemo" (NemoClaw), "opencode"
 PROVIDER_REGISTRY = {
     "openai": {
-        "base_url": "https://api.openai.com",
-        # OpenAI chat completions usage object fields
-        "token_fields": ("prompt_tokens", "completion_tokens"),
+        "upstream_url": "https://api.openai.com",
+        "token_extractor": lambda payload: (
+            payload.get("usage", {}).get("prompt_tokens", 0),
+            payload.get("usage", {}).get("completion_tokens", 0)
+        )
     },
-    # "anthropic": {
-    #     "base_url": "https://api.anthropic.com",
-    #     "token_fields": ("input_tokens", "output_tokens"),
-    # },
-    # "gemini": {
-    #     "base_url": "https://generativelanguage.googleapis.com",
-    #     "token_fields": ("promptTokenCount", "candidatesTokenCount"),
-    # },
+    "anthropic": {
+        "upstream_url": "https://api.anthropic.com",
+        "token_extractor": lambda payload: (
+            payload.get("usage", {}).get("input_tokens", 0),
+            payload.get("usage", {}).get("output_tokens", 0)
+        )
+    }
 }
 DEFAULT_PROVIDER = "openai"
 
@@ -105,7 +106,7 @@ def resolve_provider() -> str:
     return p
 
 ACTIVE_PROVIDER = resolve_provider()
-REAL_URL = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["base_url"]
+REAL_URL = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["upstream_url"]
 
 
 class BillGuardian:
@@ -324,8 +325,8 @@ class BillProxyHandler(BaseHTTPRequestHandler):
             try:
                 body_json = json.loads(safe_response_body)
                 if "usage" in body_json:
-                    t_in, t_out = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["token_fields"]
-                    cost = body_json["usage"].get(t_in, 0) + body_json["usage"].get(t_out, 0)
+                    t_in, t_out = PROVIDER_REGISTRY[ACTIVE_PROVIDER]["token_extractor"](body_json["usage"])
+                    cost = t_in + t_out
             except Exception:
                 pass
 
