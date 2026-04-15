@@ -6,6 +6,7 @@ on:
       - main
       - master
       - 'feat/**'
+      - 'claude/**'
   pull_request:
     branches:
       - main
@@ -21,6 +22,8 @@ jobs:
     steps:
       - name: Code Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Python Foundation
         uses: actions/setup-python@v5
@@ -41,6 +44,21 @@ jobs:
         run: |
           sudo mkdir -p /var/log/unifai
           sudo chmod -R 777 /var/log/unifai
+
+      - name: Validate Installer Stage Syntax
+        run: |
+          echo "Checking bash syntax for all installer stages..."
+          fail=0
+          for f in little7-installer/stages/*.sh; do
+            if bash -n "$f" 2>&1; then
+              echo "[OK] $f"
+            else
+              echo "[FAIL] Syntax error in $f"
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ] && echo "[PASS] All installer stages pass syntax check."
+          exit $fail
 
       - name: Ignition Sequence - Grant Permissions
         run: chmod +x scripts/smoke_test_*.sh
@@ -156,6 +174,15 @@ jobs:
       # cannot spawn directly, and that the Agile ledger cap (max 5) is enforced.
       - name: Run Gaia Orchestration Smoke Test
         run: python scripts/smoke_test_gaia_orchestration.py
+
+      # Charter boundary: Full UnifAI deployment — governance chain + OpenClaw mock launch
+      # Mirrors Stages 00/20/21/50: SecretVault init → OpenAI key seed → Keyman grant →
+      # Bill Proxy routing to api.openai.com → env injection contract validation.
+      - name: Governance Chain + OpenClaw Mock Deployment Test
+        run: |
+          chmod +x scripts/smoke_test_openclaw_governance.sh
+          ./scripts/smoke_test_openclaw_governance.sh
+          pkill -f "bill_proxy.py" || true
 
       - name: Integrity Verified - Telegram Alert
         if: success()

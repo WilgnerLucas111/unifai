@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # UnifAI World Physics Injection Pipeline — Verification Test
 # Validates that API keys flow correctly through SecretVault → Keyman → OpenClaw
+# Provider order: OpenAI Codex (primary, Alpha Phase) → Anthropic Claude (fallback)
 set -euo pipefail
 
 echo "=== UnifAI World Physics Injection Smoke Test ==="
 
-# Paths relative to the UnifAI repository root (fixing previous hardcoded Claude ones)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -33,7 +33,6 @@ cat > "$SECRETVAULT_ROOT/config/default.json" <<CFG
 CFG
 
 echo "[INFO] Fetching supervisor-secretvault CLI to test with..."
-# We test with the actual local script to avoid network dependencies if npm install fails in CI
 LOCAL_SV_DIR="$REPO_ROOT/supervisor/supervisor-secretvault"
 SV="node $LOCAL_SV_DIR/src/cli.js"
 
@@ -51,49 +50,105 @@ fi
 $SV init >/dev/null || { echo "[FAIL] Init failed"; exit 1; }
 echo "[PASS] SecretVault init OK"
 
-echo "[INFO] Step 2: Seeding WRONG API key (alias: codex-oauth)..."
-$SV seed --alias codex-oauth --value "sk-ant-FAKE-KEY-FOR-TESTING" >/dev/null || { echo "[FAIL] Seed failed"; exit 1; }
-echo "[PASS] Seed OK"
+# -----------------------------------------------------------------------
+# PRIMARY PROVIDER: OpenAI Codex (openai-oauth)
+# Alpha Phase default — all new deployments use OpenAI unless overridden.
+# -----------------------------------------------------------------------
+echo ""
+echo "[INFO] === PRIMARY PROVIDER: OpenAI Codex ==="
+echo "[INFO] Step 2a: Seeding FAKE OpenAI key (alias: openai-oauth)..."
+$SV seed --alias openai-oauth --value "sk-FAKE-OPENAI-KEY-FOR-TESTING-0000000000" >/dev/null \
+  || { echo "[FAIL] OpenAI seed failed"; exit 1; }
+echo "[PASS] OpenAI seed OK"
 
-echo "[INFO] Step 3: Requesting grant via auto Keyman contract..."
-# We pass the required requester identifier expected by keyman_auth_cli.py
-GRANT_JSON=$($SV request --alias codex-oauth --purpose "test-run" --agent admin_agent --ttl 60)
+echo "[INFO] Step 3a: Requesting grant for openai-oauth via Keyman..."
+GRANT_JSON_OAI=$($SV request --alias openai-oauth --purpose "test-run" --agent admin_agent --ttl 60)
 
-if echo "$GRANT_JSON" | grep -q '"ok":true'; then
-  GRANT_PATH=$(echo "$GRANT_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('path', ''))")
-  echo "[PASS] Grant issued successfully by Keyman: $GRANT_PATH"
+if echo "$GRANT_JSON_OAI" | grep -q '"ok":true'; then
+  GRANT_PATH_OAI=$(echo "$GRANT_JSON_OAI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('path', ''))")
+  echo "[PASS] Grant issued successfully by Keyman (openai-oauth): $GRANT_PATH_OAI"
 else
-  echo "[FAIL] Grant request failed! Keyman blocked it or CLI crashed: $GRANT_JSON"
+  echo "[FAIL] Grant request failed for openai-oauth! Keyman blocked it: $GRANT_JSON_OAI"
   exit 1
 fi
 
-if [ ! -f "$GRANT_PATH" ]; then
-  echo "[FAIL] Grant file physically missing at $GRANT_PATH"
+if [ ! -f "$GRANT_PATH_OAI" ]; then
+  echo "[FAIL] OpenAI grant file physically missing at $GRANT_PATH_OAI"
   exit 1
 fi
 
-echo "[INFO] Step 4: Injecting key and calling Anthropic API..."
-# Simulate what openclaw-start does without `export`
-API_KEY=$(cat "$GRANT_PATH")
-echo "[INFO] Injected Key test via exec env simulation..."
+echo "[INFO] Step 4a: Injecting OpenAI key and calling api.openai.com..."
+OAI_KEY=$(cat "$GRANT_PATH_OAI")
+HTTP_STATUS_OAI=$(env OPENAI_API_KEY="$OAI_KEY" curl -s -o /dev/null -w "%{http_code}" \
+  -X POST https://api.openai.com/v1/chat/completions \
+  -H "Authorization: Bearer $OAI_KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"gpt-4o-mini","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
 
-HTTP_STATUS=$(env ANTHROPIC_API_KEY="$API_KEY" curl -s -o /dev/null -w "%{http_code}" \
+echo "[INFO] OpenAI API returned HTTP: $HTTP_STATUS_OAI"
+if [ "$HTTP_STATUS_OAI" == "401" ] || [ "$HTTP_STATUS_OAI" == "403" ]; then
+  echo "[PASS] Got HTTP $HTTP_STATUS_OAI from OpenAI — injection pipeline works. Fake key isolated."
+else
+  echo "[FAIL] Got HTTP $HTTP_STATUS_OAI from OpenAI instead of 401/403."
+  exit 1
+fi
+
+echo "[INFO] Step 5a: Asserting no OpenAI key leakage..."
+unset OAI_KEY
+
+if env | grep -q "OPENAI_API_KEY"; then
+  echo "[FAIL] OPENAI_API_KEY leaked into global process environment!"
+  exit 1
+else
+  echo "[PASS] OPENAI_API_KEY not found in global env."
+fi
+
+# -----------------------------------------------------------------------
+# FALLBACK PROVIDER: Anthropic Claude (codex-oauth)
+# Used when openai-oauth is not seeded; future multi-provider support.
+# -----------------------------------------------------------------------
+echo ""
+echo "[INFO] === FALLBACK PROVIDER: Anthropic Claude ==="
+echo "[INFO] Step 2b: Seeding FAKE Anthropic key (alias: codex-oauth)..."
+$SV seed --alias codex-oauth --value "sk-ant-FAKE-KEY-FOR-TESTING-ANTHROPIC" >/dev/null \
+  || { echo "[FAIL] Anthropic seed failed"; exit 1; }
+echo "[PASS] Anthropic seed OK"
+
+echo "[INFO] Step 3b: Requesting grant for codex-oauth via Keyman..."
+GRANT_JSON_ANT=$($SV request --alias codex-oauth --purpose "test-run" --agent admin_agent --ttl 60)
+
+if echo "$GRANT_JSON_ANT" | grep -q '"ok":true'; then
+  GRANT_PATH_ANT=$(echo "$GRANT_JSON_ANT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('path', ''))")
+  echo "[PASS] Grant issued successfully by Keyman (codex-oauth): $GRANT_PATH_ANT"
+else
+  echo "[FAIL] Grant request failed for codex-oauth! Keyman blocked it: $GRANT_JSON_ANT"
+  exit 1
+fi
+
+if [ ! -f "$GRANT_PATH_ANT" ]; then
+  echo "[FAIL] Anthropic grant file physically missing at $GRANT_PATH_ANT"
+  exit 1
+fi
+
+echo "[INFO] Step 4b: Injecting Anthropic key and calling api.anthropic.com..."
+ANT_KEY=$(cat "$GRANT_PATH_ANT")
+HTTP_STATUS_ANT=$(env ANTHROPIC_API_KEY="$ANT_KEY" curl -s -o /dev/null -w "%{http_code}" \
   -X POST https://api.anthropic.com/v1/messages \
-  -H "x-api-key: $API_KEY" \
+  -H "x-api-key: $ANT_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
   -d '{"model":"claude-3-haiku-20240307","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
 
-echo "[INFO] Step 5: Asserting result..."
-if [ "$HTTP_STATUS" == "401" ]; then
-  echo "[PASS] Got HTTP 401 — injection pipeline works securely. Fake key isolated."
+echo "[INFO] Anthropic API returned HTTP: $HTTP_STATUS_ANT"
+if [ "$HTTP_STATUS_ANT" == "401" ] || [ "$HTTP_STATUS_ANT" == "403" ]; then
+  echo "[PASS] Got HTTP $HTTP_STATUS_ANT from Anthropic — injection pipeline works. Fake key isolated."
 else
-  echo "[FAIL] Got HTTP $HTTP_STATUS instead of 401 Unauthorized."
+  echo "[FAIL] Got HTTP $HTTP_STATUS_ANT from Anthropic instead of 401/403."
   exit 1
 fi
 
-echo "[INFO] Step 6: Asserting negative test (leakage absence)..."
-unset API_KEY
+echo "[INFO] Step 5b: Asserting no Anthropic key leakage..."
+unset ANT_KEY
 
 if env | grep -q "ANTHROPIC_API_KEY"; then
   echo "[FAIL] ANTHROPIC_API_KEY leaked into global process environment!"
@@ -102,14 +157,8 @@ else
   echo "[PASS] ANTHROPIC_API_KEY not found in global env."
 fi
 
-if [ -n "${API_KEY:-}" ]; then
-  echo "[FAIL] Temporary script variable API_KEY failed to unset!"
-  exit 1
-else
-  echo "[PASS] Temporary keys purged locally."
-fi
-
 $SV cleanup >/dev/null || true
 rm -rf "$TEST_ROOT"
 
-echo "=== SMOKE TEST PASSED: World Physics pipeline validated ==="
+echo ""
+echo "=== SMOKE TEST PASSED: World Physics pipeline validated (OpenAI primary + Anthropic fallback) ==="

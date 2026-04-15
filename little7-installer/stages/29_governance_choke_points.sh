@@ -35,8 +35,8 @@ fi
 # 3. Keyman authorization contract
 KEYMAN_CLI="/opt/little7/supervisor/plugins/keyman_guardian/keyman_auth_cli.py"
 if [ -f "$KEYMAN_CLI" ]; then
-  # Test the contract
-  TEST_REQ='{"requester": "research_agent", "secret_alias": "web_search", "ttl_seconds": 60, "request_id": "choke-test-01"}'
+  # Test the contract — include scope + trace_id required by GovernancePolicyEngine
+  TEST_REQ='{"requester": "research_agent", "secret_alias": "web_search", "ttl_seconds": 60, "request_id": "choke-test-01", "scope": "task", "trace_id": "choke-test-trace-01"}'
   RES=$(echo "$TEST_REQ" | python3 "$KEYMAN_CLI")
   if echo "$RES" | grep -q '"is_authorized": true'; then
     ok "Keyman authorization: Request/response contract is functional"

@@ -323,6 +323,34 @@ else
   echo "Warning: secrets directory not found: $SRC_SEC (skipping)"
 fi
 
+# Generate SecretVault master key if not already present.
+# The key is 32 random bytes (64 hex chars), stored root-readable only.
+# All downstream stages (21, 22, 50, 60) require this file.
+if [ ! -f "$MASTER_KEY_FILE" ]; then
+  echo "Generating SecretVault master key (256-bit random, AES-256-GCM)..."
+  sudo openssl rand -hex 32 | sudo tee "$MASTER_KEY_FILE" >/dev/null
+  echo "[OK] Master key generated: $MASTER_KEY_FILE"
+else
+  echo "Master key already present: $MASTER_KEY_FILE"
+fi
+
+# Patch secretvault config to point to the installed Keyman CLI.
+# The submodule ships with "missing-keyman.js" as a placeholder; replace it
+# with the actual Python CLI that Stage 20 has just synced to DST_SUP.
+SV_CONFIG_INSTALLED="${SV_RUNTIME_CONFIG}/default.json"
+if [ -f "$SV_CONFIG_INSTALLED" ]; then
+  echo "Patching secretvault config: keyman.command → Keyman CLI..."
+  sudo python3 -c "
+import json, sys
+with open('${SV_CONFIG_INSTALLED}', 'r') as f:
+    cfg = json.load(f)
+cfg.setdefault('keyman', {})['command'] = '../../plugins/keyman_guardian/keyman_auth_cli.py'
+with open('${SV_CONFIG_INSTALLED}', 'w') as f:
+    json.dump(cfg, f, indent=2)
+"
+  echo "[OK] Keyman path patched in $SV_CONFIG_INSTALLED"
+fi
+
 echo "Ensuring dedicated service principal..."
 ensure_service_principal
 tighten_runtime_permissions
