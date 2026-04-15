@@ -69,7 +69,20 @@ class KeymanGuardian:
             if not normalized_request.get("scope"):
                 normalized_request["scope"] = normalized_request.get("alias") or normalized_request.get("secret_alias")
 
+            request_id = normalized_request.get("request_id") or normalized_request.get("trace_id")
+            if not request_id:
+                request_id = str(uuid.uuid4())
+
             ttl_requested = normalized_request.get("ttl_seconds", 300)
+            if isinstance(ttl_requested, bool):
+                return {
+                    "approved": False,
+                    "is_authorized": False,
+                    "decision": "block_task",
+                    "reason": "Keyman preconditions not met: ['ttl_seconds (boolean not allowed)']",
+                    "ttl_seconds": 0,
+                    "request_id": request_id,
+                }
             if isinstance(ttl_requested, int):
                 if ttl_requested == 0:
                     normalized_request["ttl_seconds"] = 1
@@ -79,10 +92,6 @@ class KeymanGuardian:
             # Use the Governance Policy Engine to validate mandatory conditions
             engine = GovernancePolicyEngine()
             missing_conditions = engine.get_missing_keyman_conditions(normalized_request)
-            
-            request_id = normalized_request.get("request_id") or normalized_request.get("trace_id")
-            if not request_id:
-                request_id = str(uuid.uuid4())
             
             # If any mandatory conditions are missing, DENY immediately (fail-secure)
             if missing_conditions:

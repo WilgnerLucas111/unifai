@@ -240,6 +240,36 @@ def test_ttl_zero_is_bounded(keyman):
         assert result["ttl_seconds"] > 0
 
 
+def test_ttl_false_is_rejected_fail_secure(keyman):
+    """Boolean false must not be treated as a valid integer TTL."""
+    result = keyman.evaluate_capability_request({
+        "requester": "research_agent",
+        "secret_alias": "web_search",
+        "reason": "Boolean false TTL",
+        "ttl_seconds": False,
+        "request_id": str(uuid.uuid4()),
+    })
+
+    assert result["is_authorized"] is False
+    assert result["decision"] == "block_task"
+    assert result["ttl_seconds"] == 0
+
+
+def test_ttl_true_is_rejected_fail_secure(keyman):
+    """Boolean true must not be treated as a valid integer TTL."""
+    result = keyman.evaluate_capability_request({
+        "requester": "research_agent",
+        "secret_alias": "web_search",
+        "reason": "Boolean true TTL",
+        "ttl_seconds": True,
+        "request_id": str(uuid.uuid4()),
+    })
+
+    assert result["is_authorized"] is False
+    assert result["decision"] == "block_task"
+    assert result["ttl_seconds"] == 0
+
+
 def test_negative_ttl_is_blocked(keyman):
     """Negative TTL in request should not cause errors, just block."""
     result = keyman.evaluate_capability_request({
@@ -253,6 +283,21 @@ def test_negative_ttl_is_blocked(keyman):
     # Should either be denied or handled gracefully
     assert "is_authorized" in result
     assert "decision" in result
+
+
+def test_non_integer_ttl_is_rejected_fail_secure(keyman):
+    """Malformed non-integer TTL values must be denied, not normalized."""
+    result = keyman.evaluate_capability_request({
+        "requester": "research_agent",
+        "secret_alias": "web_search",
+        "reason": "String TTL",
+        "ttl_seconds": "300",
+        "request_id": str(uuid.uuid4()),
+    })
+
+    assert result["is_authorized"] is False
+    assert result["decision"] == "block_task"
+    assert result["ttl_seconds"] == 0
 
 
 def test_very_large_ttl(keyman):
