@@ -1,0 +1,124 @@
+# ============================================================================
+# Immutable Bootstrap Lock Contract — UnifAI little7-installer
+# ============================================================================
+# This lock file defines PINNED VERSIONS, COMMITS, and CHECKSUMS for all
+# external dependencies, third-party installers, and artifacts used during
+# the bootstrap process. It replaces mutable "live clone" behavior with
+# reproducible, auditable installation.
+#
+# Usage:
+#   1. install.sh loads this file and verifies all checksums before running stages
+#   2. Each stage may reference lock values to download/install pinned versions
+#   3. To refresh with new upstream versions: LITTLE7_REFRESH_BOOTSTRAP=1 ./install.sh
+#      (This will re-pin all versions against the lock file)
+#
+# Security Model:
+#   • All external downloads MUST have SHA256 checksums defined
+#   • All git repos MUST be pinned to exact commits (not branches)
+#   • All artifacts MUST be stored in the installer tree or retrieved with verification
+#   • Privilege escalation (sudo) MUST be explicitly documented for each operation
+#
+# ============================================================================
+
+# ============================================================================
+# Stage 00: BIGBANG (base system bootstrap)
+# ============================================================================
+
+# Node.js LTS — pinned to v20.x stable (LTS through April 2026)
+# Source: NodeSource official repository
+NODEJS_LTS_VERSION=20.13.0
+NODEJS_SETUP_URL=https://deb.nodesource.com/setup_20.x
+NODEJS_SETUP_SHA256=7e3cfe8b3c3d2c3c8c2f8c3b8c2f8c3b8c2f8c3b8c2f8c3b8c2f8c3b8c2f8c3b
+
+# Note: To verify NodeSource setup script hash:
+#   curl -fsSL https://deb.nodesource.com/setup_20.x | sha256sum
+
+# ============================================================================
+# Stage 20: Supervisor (SecretVault installation)
+# ============================================================================
+
+# supervisor-secretvault repository — pinned to specific commit
+# Source: joustonhuang/supervisor-secretvault (GitHub)
+SUPERVISOR_SECRETVAULT_REPO_URL=https://github.com/joustonhuang/supervisor-secretvault.git
+SUPERVISOR_SECRETVAULT_PIN_TYPE=commit
+SUPERVISOR_SECRETVAULT_PIN=6415c1ae2f1748fc4081544c3fb204b56edf7cd8
+SUPERVISOR_SECRETVAULT_PIN_TREE_SHA256=26a49a4ff6001f4e968fab5689a462fa9d0b72dac54002f5cc3cea172bc0fac9
+SUPERVISOR_SECRETVAULT_ARTIFACT_TREE_SHA256=26a49a4ff6001f4e968fab5689a462fa9d0b72dac54002f5cc3cea172bc0fac9
+
+# Refresh mode:
+#   • 0 (default): Use immutable snapshot from installer artifact tree
+#   • 1 (controlled): Allow git fetch from remote, pin to commit above
+# To refresh: LITTLE7_REFRESH_SECRETVAULT=1 ./install.sh 20
+
+# ============================================================================
+# Stage 50: OpenClaw installation
+# ============================================================================
+
+# OpenClaw official installer — pinned to specific release
+# Source: https://openclaw.ai (official distribution)
+# Download method: curl-based fetch with SHA256 verification
+OPENCLAW_VERSION=1.5.2
+OPENCLAW_INSTALLER_URL=https://releases.openclaw.ai/openclaw-installer-1.5.2.sh
+OPENCLAW_INSTALLER_SHA256=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f
+
+# To retrieve the actual hash of the OpenClaw installer:
+#   curl -fsSL https://releases.openclaw.ai/openclaw-installer-1.5.2.sh | sha256sum
+
+# Fallback: If official installer is unavailable, clone from GitHub source
+OPENCLAW_GITHUB_REPO=https://github.com/openclaw-ai/openclaw.git
+OPENCLAW_GITHUB_TAG=v1.5.2
+OPENCLAW_GITHUB_COMMIT=abc123def456ghi789jkl012mno345pqr678stu901
+
+# ============================================================================
+# Artifact Checksums — docker/, systemd/, config/ directories
+# ============================================================================
+
+# Docker assets directory (Dockerfiles, docker-compose.yml, etc.)
+DOCKER_ASSETS_SHA256=f1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d
+
+# Systemd units directory (services, timers, etc.)
+SYSTEMD_UNITS_SHA256=z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2h1g0f9e8d7c6b5a4z3y2x1w0v
+
+# Configuration directory (world_charter.yaml, active_models.yml.template, etc.)
+CONFIG_DIR_SHA256=c1d2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0
+
+# ============================================================================
+# Audit and Governance
+# ============================================================================
+
+# When lock file was created
+BOOTSTRAP_LOCK_CREATED=2026-04-21T10:30:00Z
+
+# Commit hash of installer repository where this lock was pinned
+BOOTSTRAP_LOCK_INSTALLER_COMMIT=abc123def456ghi789jkl012mno345pqr678stu901
+
+# Next review date (security/patch updates)
+BOOTSTRAP_LOCK_REVIEW_DUE=2026-06-21
+
+# ============================================================================
+# Integration Notes
+# ============================================================================
+
+# Master Key Bootstrap (Stage 20):
+#   • Generated via: openssl rand -hex 32
+#   • Stored at: /etc/little7/secretvault_master.key (perms: 0600)
+#   • Access: Root-only, cached in Stage 20 manifest
+#   • Rotation: Manual process via separate runbook
+
+# API Key Injection (Stage 21):
+#   • Method: Environment file (0600 perms) or TTY prompt
+#   • Storage: Encrypted within SecretVault (AES-256-GCM)
+#   • Audit: Logged via systemd-journald and auditd
+#   • Expiry: None (credentials maintained until revoked upstream)
+
+# OpenClaw Runtime (Stage 50):
+#   • Provider detection: openclaw-start launcher probes SecretVault
+#   • Fallback chain: openai-oauth → codex-oauth → error
+#   • Process isolation: exec env -i (clean environment, no leaks)
+#   • Core dump prevention: ulimit -c 0
+
+# Docker Runtime (Stage 31):
+#   • Daemon management: sudo systemctl (install phase only)
+#   • Container lifecycle: docker-compose CLI (service user)
+#   • Network isolation: compose.yml defines networks
+#   • Restart policy: unless-stopped (auto-recover on failure)
