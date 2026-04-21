@@ -65,7 +65,8 @@ _verify_sv_artifact() {
                --mtime='UTC 1970-01-01' \
                --owner=0 --group=0 --numeric-owner \
                --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-               -cf - "$sv_dir" 2>/dev/null \
+               --exclude='.pytest_cache' --exclude='.venv' \
+               -cf - -C "$sv_dir" . 2>/dev/null \
     | sha256sum | awk '{print $1}')"
 
   if [ "$actual" = "$expected" ]; then
