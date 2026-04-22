@@ -58,7 +58,7 @@ Therefore, UnifAI enforces:
 
 ### Note
 
-Other runtimes, including NanoClaw, are not currently supported and are excluded from active execution.
+NanoClaw is a peer runtime / Agentic AI OS, not an OpenClaw extension. It is not currently supported in the active baseline and is excluded from active execution.
 
 ---
 

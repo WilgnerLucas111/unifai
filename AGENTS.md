@@ -70,14 +70,14 @@ Current supported baseline:
 - OS: Debian / Ubuntu
 - Runtime: OpenClaw
 
-NanoClaw is not supported in the current baseline.
+NanoClaw is a peer runtime / Agentic AI OS, not an OpenClaw extension. It is not supported in the current baseline.
 Do not introduce:
 
 - NanoClaw into install logic, bootstrap logic, runtime execution paths, or agent/tool invocation
 - runtime-switching paths
 - parallel backend execution paths
 
-Future extensibility may be discussed in docs, but must remain inactive and outside executable paths.
+Future support may be discussed in docs, but must remain inactive and outside executable paths.
 
 - UnifAI has three layers:
   - World Physics (enforcement mechanisms)

@@ -51,7 +51,7 @@ runtime_baseline:
     - "Ubuntu"
   supported_runtime:
     - "OpenClaw"
-  statement: "OpenClaw is the sole supported runtime in the current baseline. Other runtimes may exist as future extension references only and must not appear in active execution paths."
+  statement: "OpenClaw is the sole supported runtime in the current baseline. Other peer runtimes / Agentic AI OS options are not part of the current supported baseline and must not appear in active execution paths."
 
 principles:
   - id: "P001"
